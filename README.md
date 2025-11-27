@@ -185,7 +185,7 @@ Below is a summary of each section.
 <h2>Demo</h2> 
 <p>The initial training data for the Trp-cage fast-folding protein is located at:</p> 
 <pre><code>example/0.DEMO_Trp-cage/Dataset/ </code></pre> 
-<p>On an NVIDIA L40s GPU:</p> <ul> <li>Training the diffusion model for 50 epochs takes approximately <strong>5 minutes</strong>.</li> <li>Generating 1,000 structures using 200 as batch size takes approximately <strong>1 minute</strong>.</li> </ul> <hr/> 
+<p>On an NVIDIA L40s GPU:</p> <ul> <li>Training the diffusion model for 50 epochs takes approximately <strong>5 minutes</strong>, whose output are pytorch checkpoints (.pt).</li> <li>Generating 1,000 structures (in .pdb format) using 200 as batch size takes approximately <strong>1 minute</strong>.</li> </ul> <hr/> 
 
 <h2>Reproducibility</h2> 
 <p>The <code>example/</code> folder contains all molecular dynamics input files used in the paper, prepared for the NAMD and Colvars software packages. These include:</p> 

@@ -1,0 +1,45 @@
+colvarsTrajFrequency     25
+colvarsRestartFrequency  20000
+smp			    on
+
+
+# 1. CVs                      
+                              
+colvar {
+   name end_to_end
+   distance {                 
+      group1 {                
+        atomnumbers  5      
+      }                       
+      group2 {                
+        atomnumbers  263       
+      }                       
+   }                          
+}                             
+
+colvar {
+   name RMSD_to_folded
+   RMSD {
+        forceNoPBC       on
+        atoms {
+#              atomNameResidueRange CA 1-20
+               atomnumbers 5 17 27 48 58 75 99 118 128 140 147 156 168 179 190 197 223 237 251 263
+        }
+        refPositionsFile ./folded.pdb
+    }
+                         
+}                             
+
+colvar {
+   name RMSD_to_unfolded
+   RMSD {
+        forceNoPBC       on
+        atoms {
+#              atomNameResidueRange CA 1-20
+               atomnumbers 5 17 27 48 58 75 99 118 128 140 147 156 168 179 190 197 223 237 251 263
+        }
+        refPositionsFile ./unfolded.pdb
+    }
+                         
+}                             
+

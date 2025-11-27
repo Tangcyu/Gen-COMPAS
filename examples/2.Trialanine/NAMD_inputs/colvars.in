@@ -1,0 +1,69 @@
+colvarsTrajFrequency    100
+colvarsRestartFrequency 10000
+
+colvar {
+	name phi1
+
+  	width 9.0
+
+	dihedral {
+		group1 {
+			atomNumbers 5
+		}
+		group2 {
+			atomNumbers 7
+				}
+		group3 {
+			atomNumbers 9
+				}
+		group4 {
+			atomNumbers 15
+				}
+		
+	}
+}
+
+colvar {
+	name phi2
+
+  	width 9.0
+
+    dihedral {
+		group1 {
+			atomNumbers 15
+		}
+		group2 {
+			atomNumbers 17
+		}
+		group3 {
+			atomNumbers 19
+		}
+		group4 {
+			atomNumbers 25
+		}
+	}
+}
+
+
+colvar {
+	name phi3
+
+  	width 9.0
+
+	dihedral {
+		group1 {
+			atomNumbers 25
+		}
+		group2 {
+			atomNumbers 27
+		}
+		group3 {
+			atomNumbers 29
+		}
+		group4 {
+			atomNumbers 35
+		}
+	}
+}
+
+

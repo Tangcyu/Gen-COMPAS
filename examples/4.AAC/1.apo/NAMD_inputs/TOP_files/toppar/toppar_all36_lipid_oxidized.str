@@ -1,0 +1,258 @@
+* additional parameters for oxidized phospholipids
+*
+! Parent files
+! top_all36_lipid.rtf
+! par_all36_lipid.prm
+! top_all36_cgenff.rtf
+! par_all36_cgenff.prm
+! toppar_all36_lipid_lnp.str
+! toppar_all36_lipid_mycobacterial.str
+! toppar_all36_lipid_ether.str
+! toppar_all36_lipid_sphingo.str
+
+BONDS
+!olipids new
+
+CEL1   CG2O4   300.00      1.4798 ! RETINOL RTAL unmodified
+CEL1   CG321   365.00      1.5020 ! LIPID butene; from propene, yin,adm jr., 12/95
+CEL1   CL      300.00      1.4800 ! BEON, butenone, kevo
+CG2O4  CTL2    250.00      1.5000 ! amba, from CG2O4 CG321, not optimized, yxu, RNA
+CG321  HAL1    309.00      1.1110 ! PROT alkane update, adm jr., 3/2/92
+CTL2   HGA1    309.00      1.1110 ! PROT alkane update, adm jr., 3/2/92
+CEL3   CG2O4   300.00      1.4798 ! RETINOL RTAL unmodified
+CEL3   CG321   365.00      1.5020 ! LIPID butene; from propene, yin,adm jr., 12/95
+CEL3   CL      300.00      1.4800 ! BEON, butenone, kevo
+CEL1   CEL3    440.000     1.340  ! butene, yin,adm jr., 12/95
+
+
+ANGLES
+CEL1   CEL1   CG2O4    60.00    120.00 ! RETINOL RTAL unmodified
+CEL1   CEL1   CG311    48.00    123.50 ! lig , from CG2DC1 CG2DC1 CG321
+CEL1   CEL1   CG321    48.00    123.50 ! LIPID  2-butene, yin,adm jr., 12/95
+CEL1   CG2O4  HGR52    15.00    116.00 ! RETINOL PRAL only angle modified
+CEL1   CG2O4  OG2D1    75.00    126.00 ! RETINOL PRAL only angle modified
+CEL1   CG311  CTL2     32.00    112.20 ! lig , from CG2D1 CG311 CG321
+CEL1   CG311  HAL1     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL1   CG311  HAL2     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL1   CG311  OG301    20.00     99.00 ! lig , from CG2DC1 CG321 OG3R60
+CEL1   CG321  CTL2     32.00    112.20 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CEL1   CG321  HAL1     45.00    111.50 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CEL1   CG321  OG301    75.70    110.10 ! RETINOL PROL
+CEL1   CL     CEL1     35.00    116.00 ! lig , from CG2DC1 CG2O5 CG331
+CEL1   CL     CTL2     35.00    116.00 ! BEON, butenone; from PHMK, phenyl methyl ketone; kevo
+CEL1   CL     OHL      75.00    122.20 ! BTON, butanone; from ACO, acetone; yapol
+CEL1   CTL1   OHL      75.70    110.10 ! lig , from CG2DC1 CG321 OG311
+CEL1   CTL2   HEL1     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL1   CTL2   OG301    75.70    110.10 ! RETINOL PROL
+CEL1   CTL2   OG311    75.70    110.10 ! lig , from CG2DC2 CG321 OG311
+CG2D1  CG311  OG301    20.00     99.00 ! lig , from CG2DC1 CG321 OG3R60
+CG2DC1 CG321  CTL2     32.00    112.20 ! lig , from CG2D1 CG321 CG311
+CG2O4  CEL1   HEL1     32.00    122.00 ! RETINOL RTAL unmodified
+CG2O4  CTL2   CTL2     60.00    113.80 ! lig , from CG2O5 CG321 CG321
+CG2O4  CTL2   HAL2     50.00    109.50 ! amba, from CG2O5 CG311 HGA1, not optimized, yxu, RNA
+CG311  CEL1   HEL1     40.00    116.00 ! lig , from CG321 CG2DC1 HGA4
+CG311  CTL2   CTL2     58.35    113.50   11.16   2.56100 ! PROT alkanes
+CG311  CTL2   HAL2     33.43    110.10   22.53   2.17900 ! PROT alkanes
+CG321  CEL1   HAL1     40.00    116.00 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CG321  CEL1   HEL1     40.00    116.00 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CG321  CG321  HAL1     26.50    110.10   22.53   2.17900 ! PROT alkane update, adm jr., 3/2/92
+CG321  CTL2   CTL2     58.35    113.50   11.16   2.56100 ! PROT alkanes
+CG321  OG301  OG311    72.00    104.00 ! PBG, yxu, RNA
+CL     CEL1   HEL1     32.00    123.40 ! BEON, butenone, kevo
+CTL2   CG2O4  HGR52    65.00    116.00 ! par_all_cgenff.prm
+CTL2   CG2O4  OG2D1    45.00    126.00 ! par_all_cgenff.prm
+CTL2   CG311  HAL1     34.50    110.10   22.53   2.17900 ! PROT alkane update, adm jr., 3/2/92
+CTL2   CG311  OG301   115.00    109.70 ! PBG, from CG321 CG311 OG302, yxu, RNA
+CTL2   CG321  HAL1     26.50    110.10   22.53   2.17900 ! PROT alkane update, adm jr., 3/2/92
+CTL2   CG321  HAL2     34.50    110.10   22.53   2.17900 ! PROT alkane update, adm jr., 3/2/92
+CTL2   CG321  OG301   115.00    109.70 ! PBG, from CG321 CG311 OG302, yxu, RNA
+CTL2   CTL2   HGA1     34.50    110.10   22.53   2.17900 ! PROT alkane update, adm jr., 3/2/92
+CTL2   CTL2   OG311    75.70    110.00 ! NA
+CTL2   OG301  OG311    72.00    104.00 ! PBG, yxu, RNA
+CTL2   OG311  HGP1     50.00    106.00 ! og 1/06 EtOH IR fit; was 57.5 106
+OG301  CG311  HAL1     60.00    109.50 ! all34_ethers_1a HCA2 CC32A OC30A, gk or og (not affected by mistake)
+OG301  CG321  HAL1     45.90    108.89 ! ETOB, Ethoxybenzene, cacha
+OG301  CG321  HAL2     60.00    109.50 ! all34_ethers_1a HCA2 CC32A OC30A, gk or og (not affected by mistake)
+OG311  CTL2   HAL2     45.90    108.89 ! PROT MeOH, EMB, 10/10/89
+OG311  CTL2   HGA1     45.90    108.89 ! PROT MeOH, EMB, 10/10/89
+CEL3   CEL3   CG2O4    60.00    120.00 ! RETINOL RTAL unmodified
+CEL3   CEL3   CG311    48.00    123.50 ! lig , from CG2DC1 CG2DC1 CG321
+CEL3   CEL3   CG321    48.00    123.50 ! LIPID  2-butene, yin,adm jr., 12/95
+CEL3   CG2O4  HGR52    15.00    116.00 ! RETINOL PRAL only angle modified
+CEL3   CG2O4  OG2D1    75.00    126.00 ! RETINOL PRAL only angle modified
+CEL3   CG311  CTL2     32.00    112.20 ! lig , from CG2D1 CG311 CG321
+CEL3   CG311  HAL1     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL3   CG311  HAL2     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL3   CG311  OG301    20.00     99.00 ! lig , from CG2DC1 CG321 OG3R60
+CEL3   CG321  CTL2     32.00    112.20 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CEL3   CG321  HAL1     45.00    111.50 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CEL3   CG321  OG301    75.70    110.10 ! RETINOL PROL
+CEL3   CL     CEL3     35.00    116.00 ! lig , from CG2DC1 CG2O5 CG331
+CEL3   CL     CTL2     35.00    116.00 ! BEON, butenone; from PHMK, phenyl methyl ketone; kevo
+CEL3   CL     OHL      75.00    122.20 ! BTON, butanone; from ACO, acetone; yapol
+CEL3   CTL2   HEL1     45.00    111.50 ! lig , from CG2D1 CG311 HGA1
+CEL3   CTL2   OG301    75.70    110.10 ! RETINOL PROL
+CEL3   CTL2   OG311    75.70    110.10 ! lig , from CG2DC2 CG321 OG311
+CG2O4  CEL3   HEL1     32.00    122.00 ! RETINOL RTAL unmodified
+CG311  CEL3   HEL1     40.00    116.00 ! lig , from CG321 CG2DC1 HGA4
+CG321  CEL3   HAL1     40.00    116.00 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+CG321  CEL3   HEL1     40.00    116.00 ! LIPID 1-butene; propene, yin,adm jr., 12/95
+HEL1   CEL3   CEL1    52.00    119.50   ! lip36; 2-butene, yin,adm jr., 12/95; HEL1-CEL1-CEL1
+CEL3   CEL3   CEL3    48.00    123.50   ! From CEL1 CEL1 CTL1
+CEL1   CEL1   CEL3    48.00    123.50   ! From CEL1 CEL1 CTL1
+CEL1   CEL3   CEL3    48.00    123.50   ! From CEL1 CEL1 CTL1
+CTL2   CTL1   CEL3    32.00    112.20   ! from CEL1 CTL2 CTL2 !involve the dR1 and dR2 terms
+CEL1   CEL3   CL      60.00    120.00 ! RETINOL RTAL unmodified
+CEL3   CEL3   CL      60.00    120.00 ! RETINOL RTAL unmodified 
+CEL3   CL     OBL     75.00    122.20 ! BTON, butanone; from ACO, acetone; yapol
+CEL3   CL     OCL     75.00    122.20 ! BTON, butanone; from ACO, acetone; yapol
+HEL1   CEL1   CEL3    52.00    119.50   ! 2-butene, yin,adm jr., 12/95
+CL     CEL3   HEL1    32.00    123.40 ! BEON, butenone, kevo
+CTL1   CTL2   CEL3    32.00    112.20   !from CEL1 CTL2 CTL2 !all CEL1 containing terms will
+
+DIHEDRALS
+
+CEL1   CEL1   CG2O4   HGR52     3.2000  2   180.00 ! RETINOL PRAL unmodified
+CEL1   CEL1   CG2O4   OG2D1     1.00    2   180.00 ! RETINOL PRAL unmodified
+CEL1   CEL1   CG321   CTL2      0.5000  2     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CEL1   CEL1   CG321   CTL2      0.3000  3     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CEL1   CEL1   CL      CG321     1.4000  2   180.00 ! lig , from CG2DC3 CG2DC1 CG2O5 CG331
+CEL1   CEL1   CL      CTL2      1.4000  2   180.00 ! lig , from CG2DC3 CG2DC1 CG2O5 CG331
+CEL1   CEL1   CL      HGR52     3.2000  2   180.00 ! RETINOL PRAL unmodified
+CEL1   CEL1   CL      OG2D1     1.00    2   180.00 ! RETINOL PRAL unmodified
+CEL1   CEL1   CL      OHL       1.1436  2   180.00 ! lig , from CG2D1O CG2DC1 CG2O2 OG311
+CEL1   CEL1   CTL2    OG301     1.9000  1   180.00 ! HIA (hbt), yxu, RNA
+CEL1   CEL1   CTL2    OG301     0.4000  2   180.00 ! HIA, yxu, RNA
+CEL1   CEL1   CTL2    OG301     0.6000  3   180.00 ! HIA, yxu, RNA
+CEL1   CEL1   CTL2    OG311     1.9000  1   180.00 ! lig , from CG2DC1 CG2DC1 CG321 OG311
+CEL1   CL     CG321   CG331     0.4000  1     0.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL1   CL     CG321   CG331     0.1700  2   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL1   CL     CG321   CG331     0.1300  3   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL1   CL     CG321   CG331     0.1000  6   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL1   CL     CG321   HGA2      0.1000  3     0.00 ! lig , from CG2DC1 CG2O5 CG331 HGA3 
+CEL1   CTL2   OG301   OG311     1.1000  1   180.00 ! lig , from CG321 CG311 OG301 OG311 
+CEL1   CTL2   OG301   OG311     0.5000  3     0.00 ! lig , from CG321 CG311 OG301 OG311 
+CG2D1  CG2D1  CG321   CG2DC1    1.0000  1   180.00 ! lig , from CG2D1 CG2D1 CG321 CG2D1 
+CG2D1  CG2D1  CG321   CG2DC1    0.1000  2     0.00 ! lig , from CG2D1 CG2D1 CG321 CG2D1 
+CG2D1  CG2D1  CG321   CG2DC1    0.3000  3   180.00 ! lig , from CG2D1 CG2D1 CG321 CG2D1 
+CG2D1  CG2D1  CG321   CG2DC1    0.2000  4     0.00 ! lig , from CG2D1 CG2D1 CG321 CG2D1 
+CG2DC1 CG2DC1 CG321   CG2D1     0.0000  3   180.00 ! lig , from CG2D1O CG2DC1 CG321 CG2D1
+CG2DC1 CG2DC2 CG2DC2  CG311     0.5600  1   180.00 ! lig , from CG2DC2 CG2DC1 CG2DC1 CG321
+CG2DC1 CG2DC2 CG2DC2  CG311     7.0000  2   180.00 ! lig , from CG2DC2 CG2DC1 CG2DC1 CG321
+CG2DC2 CG2DC2 CG311   CG321     0.5000  2     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CG2DC2 CG2DC2 CG311   CG321     0.3000  3     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CG2DC2 CG2DC2 CG311   HGA1      0.0300  3     0.00 ! lig , from CG2DC1 CG2DC1 CG321 HGA2 
+CG2DC2 CG2DC2 CG311   OG301     0.7000  3     0.00 ! lig , from CG2DC1 CG2DC1 CG321 OG3R6
+CG2DC2 CG311  CG321   CG321     0.1400  1   180.00 ! lig , from CG2D1 CG311 CG321 CG321
+CG2DC2 CG311  CG321   CG321     0.1700  2     0.00 ! lig , from CG2D1 CG311 CG321 CG321
+CG2DC2 CG311  CG321   CG321     0.0500  3   180.00 ! lig , from CG2D1 CG311 CG321 CG321
+CG2DC2 CG311  CG321   HGA2      0.1950  3     0.00 ! lig , from CG2D1 CG311 CG321 HGA2
+CG2DC2 CG311  OG301   OG311     1.1000  1   180.00 ! lig , from CG321 CG311 OG301 OG311
+CG2DC2 CG311  OG301   OG311     0.5000  3     0.00 ! lig , from CG321 CG311 OG301 OG311
+CG2O4  CEL1   CEL1    CTL2      0.5600  1   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 CG321
+CG2O4  CEL1   CEL1    CTL2      7.0000  2   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 CG321
+CG2O4  CEL1   CEL1    HEL1      1.0845  2   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 HGA4 
+CG2O4  CTL2   CTL2    CTL2      0.2100  1   180.00 ! lig , from CG2O5 CG321 CTL2 CG331
+CG2O4  CTL2   CTL2    CTL2      0.3900  2     0.00 ! lig , from CG2O5 CTL2 CTL2 CG331
+CG2O4  CTL2   CTL2    CTL2      0.3500  3   180.00 ! lig , from CG2O5 CTL2 CG321 CG331
+CG2O4  CTL2   CTL2    CTL2      0.1100  4     0.00 ! lig , from CG2O5 CG321 CG321 CG331
+CG2O4  CTL2   CTL2    CTL2      0.0900  6   180.00 ! lig , from CG2O5 CG321 CG321 CG331
+CG2O4  CTL2   CTL2    HAL2      0.1950  3     0.00 ! lig , from CG2O5 CG321 CG321 HGA2
+CG311  CG2DC2 CG2DC2  HGA4      5.2000  2   180.00 ! lig , from CG321 CG2DC1 CG2DC1 HGA4 
+CG321  CTL2   CG321   CEL1      0.2000  3     0.00 ! lig , from CG321 CG311 CG321 CG2D1
+CTL2   CTL2   OG301   OG311     1.1000  1   180.00 ! lig , from CG321 CG311 OG301 OG311
+CTL2   CTL2   OG301   OG311     0.5000  3     0.00 ! lig , from CG321 CG311 OG301 OG311
+CTL2   OG301  OG311   HGP1      0.4000  1     0.00 ! lig , from CG311 OG301 OG311 HGP1
+CTL2   OG301  OG311   HGP1      1.1500  2     0.00 ! lig , from CG311 OG301 OG311 HGP1
+CTL2   OG301  OG311   HGP1      0.1200  3     0.00 ! lig , from CG311 OG301 OG311 HGP1
+HAL2   CTL2   CG2O4   HGR52     0.00    2   180.00 ! RETINOL PRAL unmodified
+HAL2   CTL2   CG2O4   OG2D1     0.00    2   180.00 ! RETINOL PRAL unmodified
+HAL2   CTL2   OG301   OG311     0.2000  3     0.00 ! PBG, yxu, RNA
+HAL2   CTL2   OG311   HGP1      0.00    3     0.00 ! NA backbone. PRO2 not properly optimized in new carbohydrate FF ==> unmodified.
+HEL1   CEL1   CG2O4   HGR52     0.00    2   180.00 ! RETINOL PRAL unmodified
+HEL1   CEL1   CG2O4   OG2D1     0.00    2   180.00 ! RETINOL PRAL unmodified
+HEL1   CEL1   CL      CTL2      0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HEL1   CEL1   CL      OBL       0.3000  3   180.00 ! RETINOL CROT
+HEL1   CEL1   CL      OCL       0.3000  3   180.00 ! RETINOL CROT
+HEL1   CEL1   CTL2    OG311     0.2000  3     0.00 ! lig , from HGA4 CG2DC2 CG321 OG311
+HEL1   CTL2   OG301   OG311     0.2000  3     0.00 ! PBG, yxu, RNA
+HGA1   CTL2   CG321   CEL1      0.2000  3     0.00 ! lig , from HGA1 CG311 CG321 CG2D1
+HGA1   CTL2   OG311   HGP1      0.00    3     0.00 ! NA backbone. PRO2 not properly optimized in new carbohydrate FF ==> unmodified.
+HGA4   CEL1   CG321   CG321     0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CEL1   CG321   CTL2      0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CEL1   CL      CG321     0.0000  2   180.00 ! lig , from HGA4 CG2DC1 CG2O5 CG331
+HGA4   CG2DC1 CG321   CG2D1     0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CG2DC2 CG311   CG321     0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CG2DC2 CG311   HGA1      0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 HGA2
+HGA4   CG2DC2 CG311   OG301     0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGR52  CG2O4  CTL2    CTL2      0.0000  3   180.00 ! lig , from HGR52 CG2O4 CG321 CG331
+OBL    CL     OHL     CTL2      0.965   1   180.00 ! from  par_all36_lipid.prm OBL CL OSL CTL2
+OBL    CL     OHL     CTL2      3.85    2   180.00 ! from  par_all36_lipid.prm OBL CL OSL CTL2
+OG2D1  CG2O4  CTL2    CTL2      1.0500  1   180.00 ! lig , from OG2D1 CG2O4 CG321 CG331
+OG2D1  CG2O4  CTL2    CTL2      0.4000  2   180.00 ! lig , from OG2D1 CG2O4 CG321 CG331
+OG2D1  CG2O4  CTL2    CTL2      0.6000  3   180.00 ! lig , from OG2D1 CG2O4 CG321 CG331
+OG2D1  CG2O4  CTL2    CTL2      0.1000  4   180.00 ! lig , from OG2D1 CG2O4 CG321 CG331
+OG301  CTL2   CEL1    HEL1      0.1900  3     0.00 ! alkane, 4/98, yin and mackerell
+OG311  CTL2   CG321   CEL1      0.2000  3     0.00 ! lig , from OG311 CG311 CG321 CG2D1
+HEL1   CEL1   CTL2    CTL1     	0.1200  3     0.00 ! butene, yin,adm jr., 12/95
+HEL1   CEL1   CL      OHL      	0.3000  3   180.00 ! RETINOL CROT
+CEL3   CEL3   CG2O4   HGR52     3.2000  2   180.00 ! RETINOL PRAL unmodified
+CEL3   CEL3   CG2O4   OG2D1     1.00    2   180.00 ! RETINOL PRAL unmodified
+CEL3   CEL3   CG321   CTL2      0.5000  2     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CEL3   CEL3   CG321   CTL2      0.3000  3     0.00 ! lig , from CG2DC1 CG2DC1 CG321 CG321
+CEL3   CEL3   CL      CG321     1.4000  2   180.00 ! lig , from CG2DC3 CG2DC1 CG2O5 CG331
+CEL3   CEL3   CL      CTL2      1.4000  2   180.00 ! lig , from CG2DC3 CG2DC1 CG2O5 CG331
+CEL3   CEL3   CL      HGR52     3.2000  2   180.00 ! RETINOL PRAL unmodified
+CEL3   CEL3   CL      OG2D1     1.00    2   180.00 ! RETINOL PRAL unmodified
+CEL3   CEL3   CL      OHL       1.1436  2   180.00 ! lig , from CG2D1O CG2DC1 CG2O2 OG311
+CEL1   CEL3   CL      OHL       1.1436  2   180.00 ! lig , from CG2D1O CG2DC1 CG2O2 OG311
+CEL3   CEL3   CTL2    OG301     1.9000  1   180.00 ! HIA (hbt), yxu, RNA
+CEL3   CEL3   CTL2    OG301     0.4000  2   180.00 ! HIA, yxu, RNA
+CEL3   CEL3   CTL2    OG301     0.6000  3   180.00 ! HIA, yxu, RNA
+CEL3   CEL3   CTL2    OG311     1.9000  1   180.00 ! lig , from CG2DC1 CG2DC1 CG321 OG311
+CEL3   CL     CG321   CG331     0.4000  1     0.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL3   CL     CG321   CG331     0.1700  2   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL3   CL     CG321   CG331     0.1300  3   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL3   CL     CG321   CG331     0.1000  6   180.00 ! lig , from CG2R61 CG2O5 CG321 CG331
+CEL3   CL     CG321   HGA2      0.1000  3     0.00 ! lig , from CG2DC1 CG2O5 CG331 HGA3 
+CEL3   CTL2   OG301   OG311     1.1000  1   180.00 ! lig , from CG321 CG311 OG301 OG311 
+CEL3   CTL2   OG301   OG311     0.5000  3     0.00 ! lig , from CG321 CG311 OG301 OG311 
+CG2O4  CEL3   CEL3    CTL2      0.5600  1   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 CG321
+CG2O4  CEL3   CEL3    CTL2      7.0000  2   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 CG321
+CG2O4  CEL3   CEL3    HEL1      1.0845  2   180.00 ! lig , from CG2O5 CG2DC1 CG2DC1 HGA4 
+CG321  CTL2   CG321   CEL3      0.2000  3     0.00 ! lig , from CG321 CG311 CG321 CG2D1
+HEL1   CEL3   CG2O4   HGR52     0.00    2   180.00 ! RETINOL PRAL unmodified
+HEL1   CEL3   CG2O4   OG2D1     0.00    2   180.00 ! RETINOL PRAL unmodified
+HEL1   CEL3   CL      CTL2      0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HEL1   CEL3   CL      OBL       0.3000  3   180.00 ! RETINOL CROT
+HEL1   CEL3   CTL2    OG311     0.2000  3     0.00 ! lig , from HGA4 CG2DC2 CG321 OG311
+HGA1   CTL2   CG321   CEL3      0.2000  3     0.00 ! lig , from HGA1 CG311 CG321 CG2D1
+HGA4   CEL3   CG321   CG321     0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CEL3   CG321   CTL2      0.2000  3     0.00 ! lig , from HGA4 CG2DC1 CG321 OG3R60
+HGA4   CEL3   CL      CG321     0.0000  2   180.00 ! lig , from HGA4 CG2DC1 CG2O5 CG331
+OG301  CTL2   CEL3    HEL1      0.1900  3     0.00 ! alkane, 4/98, yin and mackerell
+OG311  CTL2   CG321   CEL3      0.2000  3     0.00 ! lig , from OG311 CG311 CG321 CG2D1
+HEL1   CEL3   CTL2    CTL1     	0.1200  3     0.00 ! butene, yin,adm jr., 12/95
+CEL3   CEL3   CTL1    CTL2     	0.5000  1   180.0  ! bR12, CEL1 CEL1 CTL2 CTL2
+CEL3   CEL3   CTL1    CTL2     	1.3000  3   180.0  ! 
+HEL1   CEL3   CTL1    CTL2     	0.1200  3     0.00 ! par_all36_lipid.prm  HEL1   CEL1   CTL2    CTL1
+CEL3   CEL3   CL      OBL      6.8277  2   180.00 ! lig , from CG2D1O CG2DC1 CG2O2 OG2D1
+CEL1   CEL3   CL      OBL      6.8277  2   180.00 ! lig , from CG2D1O CG2DC1 CG2O2 OG2D1
+HEL1   CEL3   CL      OHL      0.3000  3   180.00 ! RETINOL CROT
+HEL1   CEL3   CL      OCL      0.3000  3   180.00 ! RETINOL CROT
+CEL3   CEL3   CL      OCL      1.3000  2   180.00 ! RETINOL PRAC
+CEL3   CEL3   CTL2    CTL1     0.5000  1   180.0  ! torR2, CEL1 CEL1 CTL2 CTL2
+CEL3   CEL3   CTL2    CTL1     1.3000  3   180.0  !
+X    CEL1 CEL3 X        0.4500  1   180.00 ! 2-butene, adm jr., 4/04
+X    CEL1 CEL3 X        8.5000  2   180.00 !
+X    CEL3 CEL3 X        0.4500  1   180.00 ! 2-butene, adm jr., 4/04
+
+IMPROPER
+
+CG2O4  CTL2  OG2D1  HGR52     50.0000  0     0.00 ! amba, from CG2O4 CG321 OG2D1 HGR52, yxu
+OHL  X    X    CL          96.00    0     0.00 ! acetate
+
+
+END
+
+RETURN

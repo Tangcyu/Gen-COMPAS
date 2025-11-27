@@ -1,0 +1,71 @@
+colvarsTrajFrequency 100
+colvarsRestartFrequency 10000
+
+colvar {
+    name hinge
+
+    angle {
+        group1 {
+            psfSegID PROA PROA 
+            atomNameResidueRange CA 1-100
+            atomNameResidueRange CA 236-259
+        }                                                                                                                                                                                                       
+        group2 {
+            psfSegID PROA PROA PROA
+            atomNameResidueRange CA 101-107
+            atomNameResidueRange CA 232-235
+            atomNameResidueRange CA 260-268
+        }
+        group3 {
+            psfSegID PROA PROA
+            atomNameResidueRange CA 108-231
+            atomNameResidueRange CA 269-271
+        }
+    }
+}
+
+
+colvar {
+    name distZ
+
+
+    distance {
+        group1 {
+            psfSegID PROA
+            atomNameResidueRange CA 103-103
+        }
+        group2 {
+            psfSegID CARA
+            atomNumbersRange 4077-4096
+        }
+    }
+}
+
+colvar {
+    name distpocket
+
+    distance {
+        group1 {atomnumbers {4081}}
+        group2 {atomnumbers {191 219 239 994 1349}}
+    }
+   distance {
+        group1 {atomnumbers {4081}}
+        group2 {atomnumbers {1349 1361 2051 2110 2446}}
+    }
+   distance {
+        group1 {atomnumbers {4081}}
+        group2 {atomnumbers {2841 2858 3219 3485}}
+    }
+}
+
+colvar {
+    name RMSD_pocket
+
+    RMSD {
+        atoms {
+              atomnumbers {191 219 239 994 1349 1361 2051 2110 2446 2841 2858 3219 3485 4081}
+        }
+        refPositionsFile /home/ctang/0.TEST_NEW_IDEAs/1.Diffuse+Committor/1.Final.Iterations/8.bind_upon_change/TOP_files/solvate.pdb
+    }
+}
+

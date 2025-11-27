@@ -1,0 +1,148 @@
+# YAML configuration for Gen-COMPAS: Diffusion Model and VCN Committor Model
+# Adjust paths and parameters as needed for your system and data
+
+############ Generative model configuration ############
+Generative:
+  # General settings
+  save_dir: 'PATH/TO/YOUR/MODEL/SAVING'    # Directory to save model checkpoints and logs
+  device: 'cuda:0'                         # CUDA device to use (e.g., 'cuda:0' or 'cpu')
+  random_seed: 42                          # Random seed for reproducibility
+  data:
+    dcd_path: PATH/TO/YOUR/DCD/FILES/*.dcd # List of paths to DCD files for training
+    psf_path: PATH/TO/YOUR/PSF/FILE.psf    # Path to the corresponding topology PSF file
+
+  model:
+    node_feature_dim: 64                   # Dimension for node embeddings (residue, atom type, coords)
+    time_embedding_dim: 128                # Dimension for time embeddings
+    hidden_dim: 128                        # Hidden dimension for MLPs, SchNet filters, Attention
+    num_schnet_layers: 4                   # Number of SchNet-style layers for atom-level processing
+    num_gat_layers: 2                      # Number of Attention layers for residue-level processing
+    residue_attn_heads: 4                  # Number of attention heads for residue-level attention (MUST MATCH MODEL)
+    k_neighbors: 16                        # Number of neighbors for k-NN graph (spatial edges)
+
+  diffusion:
+    timesteps: 200                         # Number of diffusion steps
+    beta_schedule: 'cosine'                # 'cosine' or 'linear'
+
+  training:
+    epochs: 50
+    batch_size: 64                         # Adjust based on GPU memory
+    lr: 1.0e-4                             # Initial/Max learning rate
+    weight_decay: 1.0e-6
+    grad_clip: 1.0                         # Gradient clipping max norm (0.0 to disable)
+    num_workers: 16                        # Number of workers for DataLoader (adjust based on CPU/memory)
+    save_interval: 50                      # Save model checkpoint every N epochs
+
+  inference:
+    checkpoint: "PATH/TO/YOUR/checkpoint"  # Path to trained model checkpoint
+    output:     "PATH/TO/OUTPUT/directory" # Directory to save generated samples
+    num_samples: 1000                      # Number of samples to generate
+    sample_batch: 100                      # Batch size for sampling (adjust based on GPU memory)
+    noise_scale: 1.5                       # Scale of initial noise 
+
+############ VCN Committor model configuration ############
+VCN:
+  # General settings
+  device         : 'cuda:0'                # CUDA device to use (e.g., 'cuda:0' or 'cpu')
+  label          : "test"
+
+  Sampling_path  : "PATH/TO/YOUR/SAMPLING/DATA/"
+  z_matrix       : True
+  use_all        : False
+  pair_distances : False
+  dcdfile        : ["NAME/OF/YOUR/Unbiased_TRAJECTORY.dcd"]
+  traj_fns       : ["PATH/TO/YOUR/Unbiased_TRAJECTORY_weights.csv"]
+  topfile        : "NAME/OF/YOUR/TOPOLOGY.psf"
+  atomindex      : [ATOM INDICES LIST]
+  atomselect     : "ATOM SELECTION STRING IN mdtraj FORMAT"
+  stride         : 1
+
+  cvs            :  ["CVs LIST"]            # CVs for training the VCN, only if z_matrix is False
+  periodic       :  False                   # Periodicity of the CVs, only if z_matrix is False
+
+  # Training parameters
+  epochs         :  5000                    # Number of training epochs
+  learing_rate   :  0.0001                  # Learning rate
+  patience       :  200                     # Early stopping patience
+  batch_size_factor :  0.6                  # Batch size as a factor of total frames
+  num_layers     :  4                       # Number of hidden layers
+  num_nodes      :  64                      # Number of nodes in each hidden layer
+  k              :  1                       #  Value of the force constant of the restraints at the basins
+
+  out_dir        : "PATH/TO/OUTPUT/"        # Output folder for model and results
+  cvs_to_plot    : [CVs LIST]               # CVs to plot in the analysis step, only 2D or 3D supported
+
+  # Settings for slicing intermediate frames based on committor values
+  gendcdfile     : "PATH/TO/GENERATED.dcd"  # DCD file to slice frames from (generated from generative model)
+  model_fn       : "PATH/TO/CHECKPOINT"     # Path to trained model file
+  slice_dir      : "PATH/TO/Slicing/OUTPUT" # Directory with slicing outputs
+  q_variance     :  0.1                     # Variance for committor value when selecting frames around 0.5
+
+Clustering:
+  topology       : "PATH/TO/PSF.psf"
+  trajectory     : "PATH/TO/DCD.dcd"
+  atom_selection : "protein and name CA"    # Atom selection for clustering (mdtraj format)
+  output_dir     : "./output_clusters"      # Directory to save clustering results
+  n_clusters     : null                     # auto-determined if null
+  n_per_cluster  : 2                        # number of frames to save per cluster
+  max_k          : 8                        # used only if n_clusters is null
+  select_farthest: true                     # also include farthest frames along with cluster centers
+
+Occupancy:
+  pdb_dir        : "./input_pdbs"           # Directory containing PDB files to process
+  topology_file  : "system_withH.psf"       # Topology file for adding hydrogens or setting occupancy
+  pdb_file       : "reference_withH.pdb"    # Reference PDB file for adding hydrogens or setting occupancy
+  output_dir     : "./output_pdbs"          # Directory to save processed PDB files
+  add_hydrogens  : true                     # if false, only occupancy is set
+  selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
+
+Reweighting:
+  topology_file : "PATH/TO/PSF.psf"
+  dcd_folder    : "PATH/TO/DCD/FOLDER/"     # Folder containing Unbiased DCD files to concatenate and reweight
+  match         : "unbias"                  # String to match in DCD and colvars filenames for unbiased trajectories
+  output_dir    : "./output_reweighting"    # Directory to save concatenated DCD and weights
+  sel_weights   : "protein and not name H*" # Atom selection for reweighting 
+  sel_output    : "protein and not name H*" # Atom selection for output DCD 
+
+  method        : "pca"                     # Reweighting method
+  dim           : 2                         # Number of dimensions for PCA
+  split         : 0.1                       # Fraction of trajectory for reweighting
+  colvars_mismatch : True                   # Mismatch colvars in colvars.traj and dcdfile (If true, the step 0 of colvars.traj is ignored)
+  temperature   : 300                        # Temperature in Kelvin
+
+  cvs_to_label  : ["CVs LIST"]               # CVs for labeling the basins
+  periodic      : False                      # Periodicity of the CVs
+  basin_A       : [0.0, 10.0]                # Center of Basin A definition in colvar values
+  basin_B       : [10.0, 0.0]                # Center of Basin B definition in colvar values
+  basin_size    : [5.0, 5.0]                 # Size of the basins in colvar units
+
+FEL_estimate:
+  folders:
+    - "./runs/set1"                          # One or more folders to search recursively for trajectories
+    - "./runs/set2"
+
+  match: "unbias"                            # Substring pattern used to identify colvars files (e.g. "*unbias*.colvars.traj")
+  match_bias: "log.restrained"               # Substring pattern for log files for restrained MD (e.g. "*log.restrained*")
+  stride: 1                                  # Stride for reading frames from trajectories
+
+  log_column: 12                             # Column index (1-based) in the NAMD bias log containing the energy of the restraint
+  cv_names: ["CVs LIST"]                     # Names of the collective variables in the colvars files
+  temperature: 300                           # Temperature in Kelvin
+
+  bins: [200, 200]                           # Number of bins for each CV
+  cvmins: [0, 0]                             # Minimum values for each CV
+  cvmaxs: [180, 180]                         # Maximum values for each CV
+  periodicities: [1, 1]                      # Periodicity flags for each CV (1 = periodic, 0 = non-periodic)
+
+  overlap_threshold: 1e-4                    # Threshold for overlap-constant matching
+  min_overlap_bins: 20                       # Minimum number of overlapping bins required
+
+  sigma: [1.0, 1.0]                          # Gaussian smoothing sigma in units of bins (per dimension)
+  F_max: 10.0                                # Maximum free energy value to cap at (in kcal/mol)
+  output: "free_energy.dat"                  # Output file for free energy surface, including a figure in PDF format
+  scaled_bins: 100                           # Number of bins for scaled free energy output
+  scaled_output: "free_energy_scaled.dat"    # Output file for scaled free energy surface, including a figure in PDF format
+  verbose: true                              # Whether to print detailed logs during processing
+
+  
+

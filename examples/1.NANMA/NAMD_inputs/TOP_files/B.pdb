@@ -1,0 +1,24 @@
+CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1
+ATOM      1  CL  ALADA   1      -2.527  -1.964   0.449  1.00  0.00      AD    
+ATOM      2  HL1 ALADA   1      -2.602  -2.849   1.119  1.00  0.00      AD    
+ATOM      3  HL2 ALADA   1      -2.424  -2.327  -0.596  1.00  0.00      AD    
+ATOM      4  HL3 ALADA   1      -3.465  -1.376   0.542  1.00  0.00      AD    
+ATOM      5  CLP ALADA   1      -1.348  -1.140   0.836  1.00  0.00      AD    
+ATOM      6  OL  ALADA   1      -0.614  -1.508   1.750  1.00  0.00      AD    
+ATOM      7  NL  ALADA   1      -1.142  -0.006   0.127  1.00  0.00      AD    
+ATOM      8  HL  ALADA   1      -1.720   0.210  -0.652  1.00  0.00      AD    
+ATOM      9  CA  ALADA   1      -0.068   0.947   0.301  1.00  0.00      AD    
+ATOM     10  HA  ALADA   1      -0.290   1.762  -0.373  1.00  0.00      AD    
+ATOM     11  CB  ALADA   1       0.085   1.543   1.719  1.00  0.00      AD    
+ATOM     12  HB1 ALADA   1       0.317   0.754   2.465  1.00  0.00      AD    
+ATOM     13  HB2 ALADA   1       0.908   2.290   1.733  1.00  0.00      AD    
+ATOM     14  HB3 ALADA   1      -0.853   2.049   2.026  1.00  0.00      AD    
+ATOM     15  CRP ALADA   1       1.235   0.361  -0.150  1.00  0.00      AD    
+ATOM     16  OR  ALADA   1       1.758   0.742  -1.190  1.00  0.00      AD    
+ATOM     17  NR  ALADA   1       1.774  -0.605   0.599  1.00  0.00      AD    
+ATOM     18  HR  ALADA   1       1.302  -0.909   1.430  1.00  0.00      AD    
+ATOM     19  CR  ALADA   1       3.006  -1.238   0.222  1.00  0.00      AD    
+ATOM     20  HR1 ALADA   1       2.901  -1.716  -0.776  1.00  0.00      AD    
+ATOM     21  HR2 ALADA   1       3.276  -2.016   0.967  1.00  0.00      AD    
+ATOM     22  HR3 ALADA   1       3.824  -0.487   0.169  1.00  0.00      AD    
+END

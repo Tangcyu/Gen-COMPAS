@@ -124,7 +124,7 @@ def train_diffusion_model(config: dict):
     init_ckpt = config.get('init_checkpoint_path', None)
 
     # Save configuration for reproducibility
-    config_path = os.path.join(save_dir, 'config.yaml')
+    config_path = os.path.join(save_dir, str(time.ctime)+'config.yaml')
     with open(config_path, 'w') as f:
         yaml.dump(config, f)
     logger.info(f"Configuration saved to {config_path}")

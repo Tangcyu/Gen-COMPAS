@@ -1,0 +1,69 @@
+VCN:
+  label: my_committor
+  Sampling_path: ./
+  out_dir: ./ensemble_output
+
+  traj_fns:
+    - traj1.csv
+    - traj2.csv
+
+  cvs: [cv1, cv2]
+  periodic: false
+  val_ratio: 0.1
+
+  epochs: 500
+  patience: 20
+  num_layers: 2
+  num_nodes: 64
+  batch_size_factor: 1.0
+  k: 1.0
+
+  # optional z-matrix block
+  z_matrix: false
+  dcdfile: null
+  topfile: null
+  atomindex: []
+  atomselect: null
+  use_all: false
+  pair_distance: false
+  dcd_chunk_size: 2000
+  zmatrix_log_every: 10
+
+  # ensemble settings
+  n_ensemble: 8
+  seed_base: 12345
+  ensemble_devices:
+    - cuda:0
+    - cuda:1
+    - cuda:2
+    - cuda:3
+    - cuda:4
+    - cuda:5
+    - cuda:6
+    - cuda:7
+
+  # inference / uncertainty
+  inference_device: cpu
+  inference_batch_size: 16384
+  uncertainty_plot_cvs: [cv1, cv2]
+  uncertainty_pdf_name: uncertainty_cv1_cv2.pdf
+  uncertainty_cmap: viridis
+  uncertainty_colorbar_title: "$\\sigma_q$"
+
+  # plotting style, same spirit as your 2nd script
+  plot_cvs: [cv1, cv2]
+  x_label: CV1
+  y_label: CV2
+  x_lim: [-2.0, 2.0]
+  y_lim: [-2.0, 2.0]
+  bins: 50
+  figure_width_cm: 3.5
+  aspect_ratio: 1.0
+  line_width: 0.4
+  font_size: 7
+  label_font_size: 7
+  colorbar_orientation: vertical
+  colorbar_location: right
+  legend: true
+  strings_fn: []
+  font_path: ""

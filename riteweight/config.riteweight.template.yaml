@@ -1,0 +1,86 @@
+folders:
+  - "/path/to/trajectory_folder"         
+match_dcd: "trajectory_pattern"         
+match_colvars: "colvars_pattern"        
+
+io:
+  top: "/path/to/topology_file.psf"
+  out: "output_directory"
+  stride: 1
+
+colvars:
+  # Names of CV columns to project (1D or 2D)
+  cv: ["CV1_name", "CV2_name"]
+  bins: [Nx_bins, Ny_bins]
+  save_cols: "all"
+  temperature_K: 300.0
+  xlim: null      # or [xmin, xmax]
+  ylim: null      # or [ymin, ymax]
+
+committor_labels: 
+  enabled: true
+  cvs_to_label: ["CV1_name", "CV2_name"]     # CVs used to determine A/B states
+  basin_A: [Ax, Ay]
+  basin_B: [Bx, By]
+  basin_size: 0.3           # scalar or list
+  k_prefactor: 1.0          # constant used when outputting Ka/Kb
+
+riteweight:
+  n_clusters: 100
+  n_iter: 20
+  tol: 1.0e-6
+  tol_window: 5
+  avg_last: 30
+  seed: 1234
+  lag: 50
+
+pairing:
+  # If mismatch occurs and colvars = dcd + 1, skip the first row of the colvars file
+  allow_skip_first_colvars: true
+  # If still unmatched: true = raise error and stop; false = skip this segment and continue
+  strict: false
+
+features:
+  mode: "internal_zmat"   # internal_zmat or distances
+
+  # internal_zmat: generate 3N-6 internal coordinates from atom ordering (deterministic and reproducible)
+  internal_zmat:
+    atomselect: "selection_string"
+
+  cache:
+    enabled: true
+    format: "npz"
+    path: "output_directory/features_internal_zmat.npz"
+    policy: "write_if_missing"
+
+  # distances:
+  #   atom_pairs: [[atom_i, atom_j], [atom_k, atom_l]]
+
+pmf_output:
+  filename: "pmf.dat"
+  F_max: 10
+  sigma_bins: [2, 2]   # use [1.0] for 1D
+  scaled_bins: 100                 
+  scaled_filename: "pmf_scaled.dat"
+
+analysis:
+  frame_weights_csv: "output_directory/frame_weights.csv"
+  out: "output_directory/analysis"
+
+  bootstrap:
+    n_bootstrap: 200
+    ci: 0.95
+
+  convergence:
+    n_permute: 20
+    metric: "rmse"
+
+  mask:
+    p_rel_threshold: 1e-4   # compute RMSE only on bins where P_final > p_rel_threshold * P_max
+
+  outputs:
+    pmf_mean: "pmf_mean.dat"
+    pmf_ci_low: "pmf_ci_low.dat"
+    pmf_ci_high: "pmf_ci_high.dat"
+    convergence_csv: "convergence_rmse.csv"
+    convergence_pdf: "convergence_rmse.pdf"

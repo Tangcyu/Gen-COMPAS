@@ -15,9 +15,7 @@ It combines <strong>diffusion models</strong> for structure generation with <str
 </p>
 
 <p>
-For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in:
-<br>
-<a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
+For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
 </p>
 
 <p>

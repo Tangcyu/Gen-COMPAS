@@ -3,6 +3,12 @@
 
 <h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
 
+<p align="center">
+<img src="figures/scheme.png" alt="Gen-COMPAS workflow" width="800">
+</p>
+
+<p align="center">
+
 <p>
 This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and trajectory reweighting.
 It combines <strong>diffusion models</strong> for structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, along with postprocessing tools for clustering, occupancy analysis, and trajectory reweighting.

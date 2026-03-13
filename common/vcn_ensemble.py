@@ -1198,7 +1198,7 @@ def analyze_uncertainty(config: dict):
 # Main
 # =========================================================
 
-def main():
+def vcn_ensemble():
     parser = argparse.ArgumentParser(description="Cached-dataset ensemble committor training")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config")
     parser.add_argument("--mode", type=str, default="all", choices=["cache", "train", "analyze", "all"])
@@ -1234,4 +1234,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    vcn_ensemble()

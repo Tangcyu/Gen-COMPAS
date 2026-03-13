@@ -2,6 +2,7 @@ from common.diffusion_train import train_diffusion_model
 from common.diffusion_sample import run_diffusion_inference
 from common.vcn_slice import run_committor_analysis
 from common.vcn_train import train_committor_model
+from common.vcn_ensemble import vcn_ensemble
 from tools.clustering import run_clustering
 from tools.occupancy import add_occupancy
 from tools.reweighting import run_reweighting
@@ -14,7 +15,7 @@ if __name__ == "__main__":
 
 
     parser = argparse.ArgumentParser(description="Generate protein structures using SE(3) Diffusion Model")
-    parser.add_argument('--step', type=str, required=True, help='Step to run: "train_diffusion", "sample_diffusion", "train_committor", "committor_analysis", "clustering", ""occupancy", "reweighting", "fel_estimate"')
+    parser.add_argument('--step', type=str, required=True, help='Step to run: "train_diffusion", "sample_diffusion", "train_committor", "committor_analysis", "clustering", ""occupancy", "reweighting", "vcn_ensemble"')
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     args = parser.parse_args()
     if not os.path.isfile(args.config):
@@ -43,8 +44,8 @@ if __name__ == "__main__":
     elif args.step == "reweighting":
         run_reweighting(config['Reweighting'])
     
-    elif args.step == "fel_estimate":
-        run_fel_estimate(config['FEL_estimate'])
+    elif args.step == "vcn_ensemble":
+        vcn_ensemble(config['FEL_estimate'])
     
     else:
-        raise ValueError(f"Unknown step: {args.step}. Choose from 'train_diffusion', 'sample_diffusion', 'train_committor', 'committor_analysis', 'clustering', 'occupancy', 'reweighting', 'fel_estimate'.")       
+        raise ValueError(f"Unknown step: {args.step}. Choose from 'train_diffusion', 'sample_diffusion', 'train_committor', 'committor_analysis', 'clustering', 'occupancy', 'reweighting', 'vcn_ensemble'.")       

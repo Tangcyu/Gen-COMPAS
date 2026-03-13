@@ -1,19 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 
-
 <h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
 
 <p>
-This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and free energy estimation.
-It combines diffusion model</strong> for structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, along with postprocessing tools for reweighting, clustering, occupancy analysis, and free energy landscape estimation.
+This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and trajectory reweighting.
+It combines <strong>diffusion models</strong> for structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, along with postprocessing tools for clustering, occupancy analysis, and trajectory reweighting.
+</p>
+
+<p>
+For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in:
+<br>
+<a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
+</p>
+
+<p>
+An implementation of Riteweight is available in the <strong><code>riteweight</code></strong> branch of this repository.
 </p>
 
 <h2>Overview</h2>
 
 <ul>
 <li>The main entry point is a single Python script that dispatches different stages of the workflow based on a YAML configuration file.</li>
-<li>You can train models, perform inference, analyze trajectories, and compute free energies with a unified interface.</li>
+<li>You can train models, perform inference, analyze trajectories, and perform reweighting with a unified interface.</li>
 </ul>
 
 <h2>Workflow Steps</h2>
@@ -60,12 +69,7 @@ It combines diffusion model</strong> for structure generation with <strong>Varia
 <tr>
 <td><code>reweighting</code></td>
 <td><code>run_reweighting()</code></td>
-<td>Reweight unbiased MD trajectories and compute reduced representations (e.g., PCA).</td>
-</tr>
-<tr>
-<td><code>fel_estimate</code></td>
-<td><code>run_fel_estimate()</code></td>
-<td>Estimate the 2D free energy landscape (FEL) from biased/unbiased simulations.</td>
+<td>Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA).</td>
 </tr>
 </tbody>
 </table>
@@ -86,7 +90,6 @@ It combines diffusion model</strong> for structure generation with <strong>Varia
 <li><code>clustering</code></li>
 <li><code>occupancy</code></li>
 <li><code>reweighting</code></li>
-<li><code>fel_estimate</code></li>
 </ul>
 
 <h2>Configuration File (config.yaml)</h2>
@@ -145,26 +148,18 @@ Below is a summary of each section.
 
 <h3>5. Reweighting (Reweighting)</h3>
 
-<p>Reweight unbiased trajectories and compute low-dimensional representations (e.g., PCA).</p>
+<p>
+Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA or TICA).
+Actual statistical weight calculation and free energy estimation should be performed using the
+<strong>Riteweight</strong> method described in the paper linked above.
+</p>
 
 <p><strong>Key options:</strong></p>
 <ul>
-<li><strong>method:</strong> Reweighting approach (pca, tica, etc.).</li>
+<li><strong>method:</strong> Dimensionality reduction approach (pca, tica, etc.).</li>
 <li><strong>temperature:</strong> Simulation temperature.</li>
 <li><strong>cvs_to_label, basin_A/B:</strong> Define basins for state labeling.</li>
 <li><strong>colvars_mismatch:</strong> Handle colvars/dcd mismatch for NAMD outputs.</li>
-</ul>
-
-<h3>6. Free Energy Landscape Estimation (FEL_Estimate)</h3>
-
-<p>Estimate 2D PMFs using reweighted or biased simulation data.</p>
-
-<p><strong>Main parameters:</strong></p>
-<ul>
-<li><strong>folders:</strong> Input folders containing trajectory and log files.</li>
-<li><strong>cv_names, bins, cvmins, cvmaxs:</strong> Collective variable setup.</li>
-<li><strong>sigma:</strong> Gaussian smoothing width.</li>
-<li><strong>output, scaled_output:</strong> Output data and figure paths.</li>
 </ul>
 
 <h2>Dependencies</h2>
@@ -178,19 +173,46 @@ Below is a summary of each section.
 <li>PyYAML</li>
 </ul>
 
-<h2>Installation</h2> 
-<p>Clone the repository and install dependencies. The full installation typically takes less than 1 minutes.
-</p> <pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git </code></pre> <hr/> 
+<h2>Installation</h2>
 
-<h2>Demo</h2> 
-<p>The initial training data for the Trp-cage fast-folding protein is located at:</p> 
-<pre><code>example/0.DEMO_Trp-cage/Dataset/ </code></pre> 
-<p>On an NVIDIA L40s GPU:</p> <ul> <li>Training the diffusion model for 50 epochs takes approximately <strong>5 minutes</strong>, whose output are pytorch checkpoints (.pt).</li> <li>Generating 1,000 structures (in .pdb format) using 200 as batch size takes approximately <strong>1 minute</strong>.</li> </ul> <hr/> 
+<p>Clone the repository and install dependencies. The full installation typically takes less than 1 minute.</p>
 
-<h2>Reproducibility</h2> 
-<p>The <code>example/</code> folder contains all molecular dynamics input files used in the paper, prepared for the NAMD and Colvars software packages. These include:</p> 
-<ul> <li>Topologies, coordinates, velocities, and periodic boxes</li> <li>Force field parameter files</li> <li>Systems for NANMA, Tri-alanine, Trp-cage, RBP, and AAC</li> </ul> 
-<p>Running the complete Gen-COMPAS workflow on these inputs will reproduce the results presented in the manuscript.</p>
+<pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
+</code></pre>
+
+<hr/>
+
+<h2>Demo</h2>
+
+<p>The initial training data for the Trp-cage fast-folding protein is located at:</p>
+
+<pre><code>example/0.DEMO_Trp-cage/Dataset/
+</code></pre>
+
+<p>On an NVIDIA L40s GPU:</p>
+
+<ul>
+<li>Training the diffusion model for 50 epochs takes approximately <strong>5 minutes</strong>, producing PyTorch checkpoints (.pt).</li>
+<li>Generating 1,000 structures (.pdb format) using batch size 200 takes approximately <strong>1 minute</strong>.</li>
+</ul>
+
+<hr/>
+
+<h2>Reproducibility</h2>
+
+<p>
+The <code>example/</code> folder contains all molecular dynamics input files used in the paper, prepared for the NAMD and Colvars software packages. These include:
+</p>
+
+<ul>
+<li>Topologies, coordinates, velocities, and periodic boxes</li>
+<li>Force field parameter files</li>
+<li>Systems for NANMA, Tri-alanine, Trp-cage, RBP, and AAC</li>
+</ul>
+
+<p>
+Running the complete Gen-COMPAS workflow on these inputs will reproduce the results presented in the manuscript.
+</p>
 
 </body>
 </html>

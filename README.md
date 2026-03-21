@@ -171,17 +171,36 @@ Actual statistical weight calculation and free energy estimation should be perfo
 <p><strong>Core requirements:</strong></p>
 <ul>
 <li>Python &gt;= 3.9</li>
-<li>PyTorch &gt;= 2.0</li>
-<li>ASE, OpenMM, MDTraj, MDAnalysis</li>
+<li>PyTorch &gt;= 2.0 and torch-scatter</li>
+<li>MDTraj, MDAnalysis</li>
 <li>NumPy, SciPy, scikit-learn, pandas, matplotlib</li>
-<li>PyYAML</li>
+<li>PyYAML, tqdm, kneed, tensorboard</li>
 </ul>
 
 <h2>Installation</h2>
 
-<p>Clone the repository and install dependencies. The full installation typically takes less than 1 minute.</p>
+<p>We recommend creating a fresh conda environment first so the Python version is explicit and reproducible. The package currently builds cleanly with <strong>Python 3.12.4</strong> in this repository, while the package metadata allows <strong>Python &gt;= 3.9</strong>.</p>
+
+<pre><code>conda create -n gen-compas python=3.12.4 -y
+conda activate gen-compas
+</code></pre>
+
+<p>Then clone the repository and install it with pip:</p>
 
 <pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
+cd Gen-COMPAS
+pip install .
+</code></pre>
+
+<p>This installs the <code>gen-compas</code> command-line entry point, so the workflow can be launched with:</p>
+
+<pre><code>gen-compas --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
+</code></pre>
+
+<p>You can also build and install the wheel manually if needed:</p>
+
+<pre><code>python -m pip wheel --no-deps . -w dist
+pip install dist/gen_compas-0.1.0-py3-none-any.whl
 </code></pre>
 
 <hr/>

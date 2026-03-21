@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Gen-COMPAS"
+version = "0.1.0"
+description = "Generative committor-guided path sampling for rare events"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Gen-COMPAS contributors" }
+]
+dependencies = [
+  "kneed",
+  "matplotlib",
+  "MDAnalysis",
+  "mdtraj",
+  "numpy",
+  "pandas",
+  "PyYAML",
+  "scikit-learn",
+  "scipy",
+  "torch>=2.0",
+  "torch-scatter",
+  "tensorboard",
+  "tqdm",
+]
+
+[project.urls]
+Homepage = "https://github.com/Tangcyu/Gen-COMPAS"
+
+[project.scripts]
+gen-compas = "run:main"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["run"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["common", "common.*", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml"]

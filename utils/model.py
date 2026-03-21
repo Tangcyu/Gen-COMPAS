@@ -1,11 +1,42 @@
 # utils/model.py
 import torch
 import torch.nn as nn
-from torch_scatter import scatter_mean
 from torch.cuda.amp import autocast
 import math 
 from .embedding import SinusoidalEmbedding 
 from typing import List
+
+
+def scatter_mean_torch(src: torch.Tensor, index: torch.Tensor, dim: int = 0, dim_size: int | None = None):
+    """Compute scatter-mean with native PyTorch ops to avoid torch-scatter."""
+    if dim != 0:
+        raise NotImplementedError("scatter_mean_torch currently supports only dim=0.")
+
+    if src.ndim == 0:
+        raise ValueError("src must have at least one dimension.")
+
+    index = index.to(device=src.device, dtype=torch.long)
+    if index.ndim != 1 or index.shape[0] != src.shape[0]:
+        raise ValueError("index must be a 1D tensor with the same length as src along dim 0.")
+
+    if dim_size is None:
+        dim_size = int(index.max().item()) + 1 if index.numel() > 0 else 0
+
+    out_shape = (dim_size,) + tuple(src.shape[1:])
+    out = torch.zeros(out_shape, dtype=src.dtype, device=src.device)
+    counts = torch.zeros(dim_size, dtype=src.dtype, device=src.device)
+
+    if index.numel() == 0:
+        return out
+
+    expand_shape = (index.shape[0],) + (1,) * (src.ndim - 1)
+    expanded_index = index.view(expand_shape).expand_as(src)
+    out.scatter_add_(0, expanded_index, src)
+    counts.scatter_add_(0, index, torch.ones_like(index, dtype=src.dtype))
+
+    counts = counts.clamp_min(1)
+    view_shape = (dim_size,) + (1,) * (src.ndim - 1)
+    return out / counts.view(view_shape)
 
 def knn_graph_pytorch(x: torch.Tensor, k: int, batch: torch.Tensor = None, loop: bool = False, flow: str = 'source_to_target'):
     """
@@ -133,7 +164,7 @@ class SchNetLayer(nn.Module):
 
         # Aggregate messages to target nodes
         num_nodes_total = B * N
-        agg_messages_flat = scatter_mean(messages, row.long(), dim=0, dim_size=num_nodes_total) # Shape [B*N, node_dim]
+        agg_messages_flat = scatter_mean_torch(messages, row.long(), dim=0, dim_size=num_nodes_total) # Shape [B*N, node_dim]
         agg_messages = agg_messages_flat.view(B, N, -1)
 
         # Update node features with aggregated information
@@ -311,7 +342,7 @@ class DiffusionModel(nn.Module):
             num_residues_total = B * self.num_residues
 
             # Average atom features per residue globally
-            residue_h_flat = scatter_mean(h_flat_for_scatter, residue_indices_global.long(), dim=0, dim_size=num_residues_total)
+            residue_h_flat = scatter_mean_torch(h_flat_for_scatter, residue_indices_global.long(), dim=0, dim_size=num_residues_total)
             residue_h = residue_h_flat.view(B, self.num_residues, -1)
 
             # Residue-level attention

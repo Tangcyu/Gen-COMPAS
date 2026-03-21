@@ -3,15 +3,6 @@ import os
 
 import yaml
 
-from common.diffusion_sample import run_diffusion_inference
-from common.diffusion_train import train_diffusion_model
-from common.vcn_slice import run_committor_analysis
-from common.vcn_train import train_committor_model
-from tools.clustering import run_clustering
-from tools.felestimate import run_fel_estimate
-from tools.occupancy import add_occupancy
-from tools.reweighting import run_reweighting
-
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -45,21 +36,29 @@ def main(argv=None):
         config = yaml.safe_load(f)
 
     if args.step == "train_diffusion":
+        from common.diffusion_train import train_diffusion_model
         train_diffusion_model(config["Generative"])
     elif args.step == "sample_diffusion":
+        from common.diffusion_sample import run_diffusion_inference
         run_diffusion_inference(config["Generative"])
     elif args.step == "train_committor":
+        from common.vcn_train import train_committor_model
         train_committor_model(config["VCN"])
     elif args.step == "committor_analysis":
+        from common.vcn_slice import run_committor_analysis
         run_committor_analysis(config["VCN"])
     elif args.step == "clustering":
+        from tools.clustering import run_clustering
         run_clustering(config["Clustering"])
     elif args.step == "occupancy":
+        from tools.occupancy import add_occupancy
         add_occupancy(config["Occupancy"])
     elif args.step == "reweighting":
+        from tools.reweighting import run_reweighting
         run_reweighting(config["Reweighting"])
 
     # elif args.step == "fel_estimate":
+    #     from tools.felestimate import run_fel_estimate
     #     run_fel_estimate(config["FEL_estimate"])
 
     else:

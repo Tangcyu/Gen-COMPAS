@@ -191,7 +191,7 @@ conda activate gen-compas
 
 <pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
 cd Gen-COMPAS
-pip install --no-cache-dir .
+pip install .
 </code></pre>
 
 <p><strong>Note:</strong> Gen-COMPAS no longer requires <code>torch-scatter</code>. The package uses native PyTorch operations for the scatter-mean steps, which avoids binary compatibility issues with different PyTorch builds.</p>

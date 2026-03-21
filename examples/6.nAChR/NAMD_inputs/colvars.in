@@ -1,0 +1,49 @@
+colvarsTrajFrequency      25     
+colvar {
+     name coplanar_1
+     distance {
+         name x1
+         group1 {atomnumbers {4102}}
+         group2 {atomnumbers {10598}}
+     }
+     distance {
+         name x2
+         group1 {atomnumbers {10598}}
+         group2 {atomnumbers {17332}}
+     }
+     distance {
+         name x3
+         group1 {atomnumbers {17332}}
+         group2 {atomnumbers {24011}}
+     }
+    distance {
+         name x4
+         group1 {atomnumbers {24011}}
+         group2 {atomnumbers {30251}}
+     }
+     distance {
+         name x5
+         group1 {atomnumbers {30251}}
+         group2 {atomnumbers {4102}}
+     }
+}
+
+colvar {
+     name ACH_1
+     distance {
+         group1 {atomnumbers {5445}}
+         group2 {atomnumbers {2439}}
+     }
+}
+
+
+colvar {
+     name ACH_2
+     distance {
+         group1 {atomnumbers {25209}}
+         group2 {atomnumbers {22348}}
+     }
+}
+
+
+

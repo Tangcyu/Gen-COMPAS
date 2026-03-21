@@ -171,7 +171,7 @@ Actual statistical weight calculation and free energy estimation should be perfo
 <p><strong>Core requirements:</strong></p>
 <ul>
 <li>Python &gt;= 3.9</li>
-<li>PyTorch &gt;= 2.0 and torch-scatter</li>
+<li>PyTorch &gt;= 2.0</li>
 <li>MDTraj, MDAnalysis</li>
 <li>NumPy, SciPy, scikit-learn, pandas, matplotlib</li>
 <li>PyYAML, tqdm, kneed, tensorboard</li>
@@ -181,7 +181,9 @@ Actual statistical weight calculation and free energy estimation should be perfo
 
 <p>We recommend creating a fresh conda environment first so the Python version is explicit and reproducible. The package currently builds cleanly with <strong>Python 3.12.4</strong> in this repository, while the package metadata allows <strong>Python &gt;= 3.9</strong>.</p>
 
-<pre><code>conda create -n gen-compas python=3.12.4 -y
+<p>To avoid the runtime import issues seen with <code>MDAnalysis</code> on some systems, create the environment from <strong>conda-forge</strong> and install the C++ runtime libraries up front:</p>
+
+<pre><code>conda create -n gen-compas -c conda-forge python=3.12.4 libstdcxx-ng libgcc-ng -y
 conda activate gen-compas
 </code></pre>
 
@@ -189,12 +191,26 @@ conda activate gen-compas
 
 <pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
 cd Gen-COMPAS
-pip install .
+pip install --no-cache-dir .
 </code></pre>
+
+<p><strong>Note:</strong> Gen-COMPAS no longer requires <code>torch-scatter</code>. The package uses native PyTorch operations for the scatter-mean steps, which avoids binary compatibility issues with different PyTorch builds.</p>
 
 <p>This installs the <code>gen-compas</code> command-line entry point, so the workflow can be launched with:</p>
 
 <pre><code>gen-compas --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
+</code></pre>
+
+<p>If you want to verify the environment before running a workflow, the following checks should succeed without import errors:</p>
+
+<pre><code>python -c "import MDAnalysis; print('MDAnalysis import ok')"
+python -c "import run; print('run import ok')"
+gen-compas --help
+</code></pre>
+
+<p>If you already created the environment and encounter a <code>CXXABI</code> or <code>libstdc++.so.6</code> error, repair it with:</p>
+
+<pre><code>conda install -n gen-compas -c conda-forge libstdcxx-ng libgcc-ng -y
 </code></pre>
 
 <p>You can also build and install the wheel manually if needed:</p>

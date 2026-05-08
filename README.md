@@ -1,257 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
+# Gen-COMPAS Diffusion
 
-<h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
+Gen-COMPAS trains and samples a diffusion model for protein structure generation.
 
-<p align="center">
-<img src="figures/scheme.png" alt="Gen-COMPAS workflow" width="500">
-</p>
+## Workflow
 
-<p align="center">
+The command-line entry point supports two steps:
 
-<p>
-This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and trajectory reweighting.
-It combines <strong>diffusion models</strong> for structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, along with postprocessing tools for clustering, occupancy analysis, and trajectory reweighting.
-</p>
+| Step | Description |
+| --- | --- |
+| `train_diffusion` | Train the protein-structure diffusion model from DCD trajectories and a PSF topology. |
+| `sample_diffusion` | Generate protein conformations from a trained checkpoint. |
 
-<p>
-For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
-</p>
+## Usage
 
-<p>
-An implementation of Riteweight is available in the <strong><code>riteweight</code></strong> branch of this repository.
-</p>
+```bash
+python run.py --step train_diffusion --config config.yaml
+python run.py --step sample_diffusion --config config.yaml
+```
 
-<h2>Overview</h2>
+After installation, the same workflow is available through:
 
-<ul>
-<li>The main entry point is a single Python script that dispatches different stages of the workflow based on a YAML configuration file.</li>
-<li>You can train models, perform inference, analyze trajectories, and perform reweighting with a unified interface.</li>
-</ul>
+```bash
+gen-compas --step train_diffusion --config config.yaml
+gen-compas --step sample_diffusion --config config.yaml
+```
 
-<h2>Workflow Steps</h2>
+## Configuration
 
-<table>
-<thead>
-<tr>
-<th>Step Name</th>
-<th>Function</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>train_diffusion</code></td>
-<td><code>train_diffusion_model()</code></td>
-<td>Train a diffusion model for protein structure generation.</td>
-</tr>
-<tr>
-<td><code>sample_diffusion</code></td>
-<td><code>run_diffusion_inference()</code></td>
-<td>Generate new protein conformations using a trained diffusion model.</td>
-</tr>
-<tr>
-<td><code>train_committor</code></td>
-<td><code>train_committor_model()</code></td>
-<td>Train a Variational Committor Network (VCN) to predict committor probabilities from MD data.</td>
-</tr>
-<tr>
-<td><code>committor_analysis</code></td>
-<td><code>run_committor_analysis()</code></td>
-<td>Perform committor-based slicing and analysis on generated structures.</td>
-</tr>
-<tr>
-<td><code>clustering</code></td>
-<td><code>run_clustering()</code></td>
-<td>Cluster conformations using k-means and extract representative structures.</td>
-</tr>
-<tr>
-<td><code>occupancy</code></td>
-<td><code>add_occupancy()</code></td>
-<td>Add hydrogen atoms and set occupancy flags in PDB files for visualization or targeted MD.</td>
-</tr>
-<tr>
-<td><code>reweighting</code></td>
-<td><code>run_reweighting()</code></td>
-<td>Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA).</td>
-</tr>
-</tbody>
-</table>
+All runtime settings live under the `Generative` section in `config.yaml`.
 
-<h2>Usage</h2>
+Key subsections:
 
-<h3>Run a Specific Step</h3>
+- `data`: input DCD trajectory paths and PSF topology.
+- `model`: embedding size, hidden dimensions, SchNet layers, attention layers, and k-nearest-neighbor graph size.
+- `diffusion`: diffusion timesteps and beta schedule.
+- `training`: optimizer, batch size, worker count, checkpoint cadence, and gradient clipping.
+- `inference`: checkpoint path, output path, sample count, sample batch size, and noise scale.
 
-<pre><code>python run.py --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
-</code></pre>
+## Dependencies
 
-<p><strong>Available <code>&lt;STEP_NAME&gt;</code> options:</strong></p>
-<ul>
-<li><code>train_diffusion</code></li>
-<li><code>sample_diffusion</code></li>
-<li><code>train_committor</code></li>
-<li><code>committor_analysis</code></li>
-<li><code>clustering</code></li>
-<li><code>occupancy</code></li>
-<li><code>reweighting</code></li>
-</ul>
+Core requirements:
 
-<h2>Configuration File (config.yaml)</h2>
+- Python >= 3.9
+- PyTorch >= 2.0
+- MDTraj
+- NumPy
+- PyYAML
+- tqdm
 
-<p>
-All parameters for model training, inference, and analysis are specified in a single YAML file.
-Below is a summary of each section.
-</p>
+Install the package with:
 
-<h3>1. Generative Model (Generative)</h3>
-
-<p>Train or sample from a diffusion model that learns to generate protein structures.</p>
-
-<p><strong>Key subsections:</strong></p>
-<ul>
-<li><strong>data:</strong> Input trajectory and topology paths.</li>
-<li><strong>model:</strong> Embedding and architecture parameters (SchNet and attention layers).</li>
-<li><strong>diffusion:</strong> Diffusion model hyperparameters (timesteps, beta schedule).</li>
-<li><strong>training:</strong> Optimization and logging parameters.</li>
-<li><strong>inference:</strong> Sampling configuration (checkpoint, output, batch size, etc.).</li>
-</ul>
-
-<h3>2. Variational Committor Network (VCN)</h3>
-
-<p>Train and evaluate a committor model to predict transition probabilities between states A and B.</p>
-
-<p><strong>Key fields:</strong></p>
-<ul>
-<li><strong>Sampling_path, topfile, atomselect:</strong> Input trajectory data.</li>
-<li><strong>epochs, learning_rate, num_layers, num_nodes:</strong> Training hyperparameters.</li>
-<li><strong>gendcdfile, model_fn, slice_dir:</strong> For slicing generated trajectories by committor values.</li>
-<li><strong>cvs_to_plot:</strong> For visualization (2D or 3D plots).</li>
-</ul>
-
-<h3>3. Clustering (Clustering)</h3>
-
-<p>Cluster conformations based on atomic coordinates and extract representative structures.</p>
-
-<p><strong>Parameters include:</strong></p>
-<ul>
-<li><strong>n_clusters:</strong> Number of clusters (or auto-detected if null).</li>
-<li><strong>n_per_cluster:</strong> Frames per cluster to output.</li>
-<li><strong>select_farthest:</strong> Include both closest and farthest structures from centroids.</li>
-</ul>
-
-<h3>4. Occupancy (Occupancy)</h3>
-
-<p>Set atom occupancies or add hydrogens in PDB files.</p>
-
-<p><strong>Parameters include:</strong></p>
-<ul>
-<li><strong>pdb_dir, topology_file, pdb_file:</strong> Input files and directories.</li>
-<li><strong>add_hydrogens:</strong> Whether to add hydrogens. <em>(Notice: Only for formatting, do NOT use hydrogens for TMD simulations)</em></li>
-<li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
-</ul>
-
-<h3>5. Reweighting (Reweighting)</h3>
-
-<p>
-Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA or TICA).
-Actual statistical weight calculation and free energy estimation should be performed using the
-<strong>Riteweight</strong> method described in the paper linked above.
-</p>
-
-<p><strong>Key options:</strong></p>
-<ul>
-<li><strong>method:</strong> Dimensionality reduction approach (pca, tica, etc.).</li>
-<li><strong>temperature:</strong> Simulation temperature.</li>
-<li><strong>cvs_to_label, basin_A/B:</strong> Define basins for state labeling.</li>
-<li><strong>colvars_mismatch:</strong> Handle colvars/dcd mismatch for NAMD outputs.</li>
-</ul>
-
-<h2>Dependencies</h2>
-
-<p><strong>Core requirements:</strong></p>
-<ul>
-<li>Python &gt;= 3.9</li>
-<li>PyTorch &gt;= 2.0</li>
-<li>MDTraj, MDAnalysis</li>
-<li>NumPy, SciPy, scikit-learn, pandas, matplotlib</li>
-<li>PyYAML, tqdm, kneed, tensorboard</li>
-</ul>
-
-<h2>Installation</h2>
-
-<p>We recommend creating a fresh conda environment first so the Python version is explicit and reproducible. The package currently builds cleanly with <strong>Python 3.12.4</strong> in this repository, while the package metadata allows <strong>Python &gt;= 3.9</strong>.</p>
-
-<p>To avoid the runtime import issues seen with <code>MDAnalysis</code> on some systems, create the environment from <strong>conda-forge</strong> and install the C++ runtime libraries up front:</p>
-
-<pre><code>conda create -n gen-compas -c conda-forge python=3.12.4 libstdcxx-ng libgcc-ng -y
-conda activate gen-compas
-</code></pre>
-
-<p>Then clone the repository and install it with pip:</p>
-
-<pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
-cd Gen-COMPAS
+```bash
 pip install .
-</code></pre>
+```
 
-<p><strong>Note:</strong> Gen-COMPAS no longer requires <code>torch-scatter</code>. The package uses native PyTorch operations for the scatter-mean steps, which avoids binary compatibility issues with different PyTorch builds.</p>
+The package uses native PyTorch operations for scatter-mean steps, so `torch-scatter` is not required.
 
-<p>This installs the <code>gen-compas</code> command-line entry point, so the workflow can be launched with:</p>
+## Demo Data
 
-<pre><code>gen-compas --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
-</code></pre>
+The Trp-cage example dataset is located at:
 
-<p>If you want to verify the environment before running a workflow, the following checks should succeed without import errors:</p>
+```text
+examples/0.DEMO_Trp-cage/Dataset/
+```
 
-<pre><code>python -c "import MDAnalysis; print('MDAnalysis import ok')"
-python -c "import run; print('run import ok')"
-gen-compas --help
-</code></pre>
-
-<p>If you already created the environment and encounter a <code>CXXABI</code> or <code>libstdc++.so.6</code> error, repair it with:</p>
-
-<pre><code>conda install -n gen-compas -c conda-forge libstdcxx-ng libgcc-ng -y
-</code></pre>
-
-<p>You can also build and install the wheel manually if needed:</p>
-
-<pre><code>python -m pip wheel --no-deps . -w dist
-pip install dist/gen_compas-0.1.0-py3-none-any.whl
-</code></pre>
-
-<hr/>
-
-<h2>Demo</h2>
-
-<p>The initial training data for the Trp-cage fast-folding protein is located at:</p>
-
-<pre><code>example/0.DEMO_Trp-cage/Dataset/
-</code></pre>
-
-<p>On an NVIDIA L40s GPU:</p>
-
-<ul>
-<li>Training the diffusion model for 50 epochs takes approximately <strong>5 minutes</strong>, producing PyTorch checkpoints (.pt).</li>
-<li>Generating 1,000 structures (.pdb format) using batch size 200 takes approximately <strong>1 minute</strong>.</li>
-</ul>
-
-<hr/>
-
-<h2>Reproducibility</h2>
-
-<p>
-The <code>example/</code> folder contains all molecular dynamics input files used in the paper, prepared for the NAMD and Colvars software packages. These include:
-</p>
-
-<ul>
-<li>Topologies, coordinates, velocities, and periodic boxes</li>
-<li>Force field parameter files</li>
-<li>Systems for NANMA, Tri-alanine, Trp-cage, RBP, and AAC</li>
-</ul>
-
-<p>
-Running the complete Gen-COMPAS workflow on these inputs will reproduce the results presented in the manuscript.
-</p>
-
-</body>
-</html>
+On an NVIDIA L40s GPU, training the diffusion model for 50 epochs takes approximately 5 minutes, and generating 1,000 structures with batch size 200 takes approximately 1 minute.

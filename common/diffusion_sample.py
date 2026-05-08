@@ -165,4 +165,5 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     args = parser.parse_args()
 
-    run_diffusion_inference(args.config['Generative'])
+    config = load_config(args.config)
+    run_diffusion_inference(config['Generative'])

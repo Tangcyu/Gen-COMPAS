@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "Gen-COMPAS"
 version = "0.1.0"
-description = "Generative committor-guided path sampling for rare events"
+description = "Diffusion model training and sampling for protein structures"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
@@ -13,17 +13,10 @@ authors = [
   { name = "Gen-COMPAS contributors" }
 ]
 dependencies = [
-  "kneed",
-  "matplotlib",
-  "MDAnalysis",
   "mdtraj",
   "numpy",
-  "pandas",
   "PyYAML",
-  "scikit-learn",
-  "scipy",
   "torch>=2.0",
-  "tensorboard",
   "tqdm",
 ]
 
@@ -39,7 +32,7 @@ py-modules = ["run"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["common", "common.*", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
+include = ["common", "common.*", "utils", "utils.*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]

@@ -12,6 +12,7 @@ from scipy.linalg import eig
 from scipy import ndimage
 from scipy.interpolate import interpn
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from tqdm import tqdm
 
 try:
@@ -96,7 +97,7 @@ def read_colvars_traj(path: str) -> pd.DataFrame:
             else:
                 break
 
-    df = pd.read_csv(path, sep='\s+', comment="#", header=None)
+    df = pd.read_csv(path, sep=r'\s+', comment="#", header=None)
     if colnames is not None and len(colnames) == df.shape[1]:
         df.columns = colnames
     else:
@@ -139,16 +140,171 @@ def determine_AB_functor(basin_A, basin_B, basin_size):
 
     return determine_AB
 
+def normalize_cv_pair(value: Any, default: Optional[List[str]], config_key: str) -> Optional[List[str]]:
+    if value is None:
+        if default is None:
+            return None
+        value = default
+
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(",") if p.strip()] if "," in value else [value.strip()]
+    else:
+        parts = [str(p) for p in list(value)]
+
+    if len(parts) != 2:
+        raise SystemExit(f"{config_key} must contain exactly two CV column names.")
+    if parts[0] == parts[1]:
+        raise SystemExit(f"{config_key} must contain two different CV column names.")
+    return parts
+
+def committor_label_check_cv_pair(lab_cfg: dict, cvs_to_label: List[str]) -> Optional[List[str]]:
+    check_cfg = lab_cfg.get("check", {})
+    if isinstance(check_cfg, dict):
+        if not bool(check_cfg.get("enabled", True)):
+            return None
+        cv_pair_value = check_cfg.get("cv_pair", lab_cfg.get("check_cv_pair", None))
+    else:
+        if not bool(check_cfg):
+            return None
+        cv_pair_value = lab_cfg.get("check_cv_pair", None)
+
+    default_pair = list(cvs_to_label) if len(cvs_to_label) == 2 else None
+    cv_pair = normalize_cv_pair(cv_pair_value, default_pair, "committor_labels.check_cv_pair")
+    if cv_pair is None:
+        print("[WARN] committor_labels.check_cv_pair is not set and cvs_to_label is not 2D; skip label projection check.")
+    return cv_pair
+
+def committor_label_check_option(lab_cfg: dict, key: str, default: Any) -> Any:
+    check_cfg = lab_cfg.get("check", {})
+    if isinstance(check_cfg, dict) and key in check_cfg:
+        return check_cfg[key]
+    flat_key = f"check_{key}"
+    return lab_cfg.get(flat_key, default)
+
+def add_basin_overlay_if_possible(
+    ax,
+    cv_pair: List[str],
+    cvs_to_label: List[str],
+    basin_A: Any,
+    basin_B: Any,
+    basin_size: Any,
+) -> None:
+    if not all(cv in cvs_to_label for cv in cv_pair):
+        return
+
+    idx = [cvs_to_label.index(cv) for cv in cv_pair]
+    centers = {"A": np.asarray(basin_A, dtype=float), "B": np.asarray(basin_B, dtype=float)}
+    size = np.asarray(basin_size, dtype=float)
+    if size.ndim == 0:
+        size = np.full(len(cvs_to_label), float(size))
+
+    if size.size < len(cvs_to_label) or any(center.size < len(cvs_to_label) for center in centers.values()):
+        return
+
+    colors = {"A": "tab:blue", "B": "tab:red"}
+    for state, center_full in centers.items():
+        center = center_full[idx]
+        half = size[idx]
+        rect = Rectangle(
+            (center[0] - half[0], center[1] - half[1]),
+            2.0 * half[0],
+            2.0 * half[1],
+            fill=False,
+            edgecolor=colors[state],
+            linewidth=1.3,
+            linestyle="--",
+        )
+        ax.add_patch(rect)
+        ax.scatter([center[0]], [center[1]], marker="x", s=70, color=colors[state], linewidths=1.4)
+
+def save_committor_label_check(
+    df: pd.DataFrame,
+    *,
+    cv_pair: List[str],
+    out_dir: str,
+    cvs_to_label: List[str],
+    basin_A: Any,
+    basin_B: Any,
+    basin_size: Any,
+    lab_cfg: dict,
+) -> None:
+    required = list(cv_pair) + ["state", "label"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise SystemExit(
+            f"committor_labels check columns missing from frame table: {missing}. "
+            f"Add the selected CVs to colvars.save_cols or set save_cols: all."
+        )
+
+    os.makedirs(out_dir, exist_ok=True)
+    counts_filename = str(committor_label_check_option(lab_cfg, "counts_filename", "committor_labels_counts.csv"))
+    counts_path = os.path.join(out_dir, counts_filename)
+    counts = df.groupby(["state", "label"], dropna=False).size().reset_index(name="count")
+    counts["fraction"] = counts["count"] / max(len(df), 1)
+    counts.to_csv(counts_path, index=False)
+
+    plot_df = df.dropna(subset=cv_pair + ["label"]).copy()
+    max_points = committor_label_check_option(lab_cfg, "max_points", 200000)
+    if max_points is not None:
+        max_points = int(max_points)
+        if max_points > 0 and len(plot_df) > max_points:
+            seed = int(committor_label_check_option(lab_cfg, "seed", 2026))
+            plot_df = plot_df.sample(n=max_points, random_state=seed)
+
+    filename = str(committor_label_check_option(lab_cfg, "filename", "committor_labels_projection.png"))
+    out_path = os.path.join(out_dir, filename)
+
+    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    state_specs = [
+        ("M", -1, "0.65", ".", 10, 0.35),
+        ("A", 0, "tab:blue", "o", 18, 0.75),
+        ("B", 1, "tab:red", "^", 18, 0.75),
+    ]
+    for state, label, color, marker, size, alpha in state_specs:
+        mask = plot_df["label"].eq(label)
+        if "state" in plot_df.columns:
+            mask = mask | plot_df["state"].eq(state)
+        n_full = int((df["label"].eq(label) | df["state"].eq(state)).sum())
+        if not mask.any():
+            continue
+        ax.scatter(
+            plot_df.loc[mask, cv_pair[0]],
+            plot_df.loc[mask, cv_pair[1]],
+            s=size,
+            c=color,
+            marker=marker,
+            alpha=alpha,
+            linewidths=0,
+            label=f"{state} label={label} (n={n_full})",
+            rasterized=True,
+        )
+
+    add_basin_overlay_if_possible(ax, cv_pair, cvs_to_label, basin_A, basin_B, basin_size)
+    ax.set_xlabel(cv_pair[0])
+    ax.set_ylabel(cv_pair[1])
+    ax.legend(frameon=False, loc="best")
+    ax.set_title("Committor labels projected on selected CVs")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+
+    print(f"[OK] Saved committor label check: {out_path}")
+    print(f"[OK] Saved committor label counts: {counts_path}")
+
 def relabel_only(cfg: dict):
     lab_cfg = cfg.get("committor_labels", {})
     if not lab_cfg or not bool(lab_cfg.get("enabled", False)):
         raise SystemExit("committor_labels.enabled must be true for --relabel-only")
 
     cvs_to_label = lab_cfg["cvs_to_label"]
+    if isinstance(cvs_to_label, str):
+        cvs_to_label = [cvs_to_label]
     basin_A = lab_cfg["basin_A"]
     basin_B = lab_cfg["basin_B"]
     basin_size = lab_cfg["basin_size"]
     k_pref = float(lab_cfg.get("k_prefactor", 1.0))
+    check_cv_pair = committor_label_check_cv_pair(lab_cfg, cvs_to_label)
+    weight_mask_cfg = cfg.get("weight_mask", cfg.get("cv_weight_mask", {}))
 
     determine_AB = determine_AB_functor(basin_A, basin_B, basin_size)
 
@@ -180,6 +336,12 @@ def relabel_only(cfg: dict):
     df["Ka"] = np.where(states == "A", k_pref, 0.0)
     df["Kb"] = np.where(states == "B", k_pref, 0.0)
 
+    if _weight_mask_conditions(weight_mask_cfg):
+        if "weight" not in df.columns:
+            raise SystemExit("--relabel-only with weight_mask requires a 'weight' column in frame_weights.csv.")
+        masked_weights, _ = apply_cv_weight_mask(df, df["weight"].to_numpy(dtype=np.float64), weight_mask_cfg)
+        df["weight"] = masked_weights
+
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     df.to_csv(out_csv, index=False)
 
@@ -187,6 +349,167 @@ def relabel_only(cfg: dict):
         print(f"[OK] Relabeled in-place: {out_csv}")
     else:
         print(f"[OK] Relabeled and saved to: {out_csv}")
+
+    if check_cv_pair is not None:
+        save_committor_label_check(
+            df,
+            cv_pair=check_cv_pair,
+            out_dir=os.path.dirname(out_csv) or ".",
+            cvs_to_label=cvs_to_label,
+            basin_A=basin_A,
+            basin_B=basin_B,
+            basin_size=basin_size,
+            lab_cfg=lab_cfg,
+        )
+
+# =========================================================
+# === CV-based weight masking ===
+# =========================================================
+
+def _weight_mask_conditions(mask_cfg: Any) -> List[dict]:
+    if not mask_cfg:
+        return []
+    if isinstance(mask_cfg, list):
+        return list(mask_cfg)
+    if not isinstance(mask_cfg, dict):
+        raise SystemExit("weight_mask must be a mapping or a list of conditions.")
+    if not bool(mask_cfg.get("enabled", True)):
+        return []
+    conditions = mask_cfg.get("conditions", mask_cfg.get("criteria", None))
+    if conditions is None and ("cv" in mask_cfg or "column" in mask_cfg):
+        conditions = [mask_cfg]
+    if conditions is None:
+        return []
+    if isinstance(conditions, dict):
+        conditions = [conditions]
+    return list(conditions)
+
+def _condition_threshold(cond: dict) -> float:
+    value = cond.get("threshold", cond.get("value", None))
+    if value is None:
+        raise SystemExit(f"weight_mask condition for {cond.get('cv', cond.get('column', '<missing cv>'))} needs threshold/value.")
+    return float(value)
+
+def _condition_range(cond: dict) -> Tuple[Optional[float], Optional[float]]:
+    lo = cond.get("min", cond.get("lower", None))
+    hi = cond.get("max", cond.get("upper", None))
+    if lo is None and hi is None:
+        raise SystemExit(f"weight_mask range condition for {cond.get('cv', cond.get('column', '<missing cv>'))} needs min/max.")
+    return (None if lo is None else float(lo), None if hi is None else float(hi))
+
+def cv_condition_mask(df: pd.DataFrame, cond: dict) -> np.ndarray:
+    """
+    Return frames matched by one CV condition. Matched frames are the ones
+    whose weights will be zeroed by apply_cv_weight_mask().
+    """
+    cv = cond.get("cv", cond.get("column", None))
+    if not cv:
+        raise SystemExit("Each weight_mask condition needs a 'cv' or 'column' key.")
+    if cv not in df.columns:
+        raise SystemExit(
+            f"weight_mask CV column '{cv}' is not in the output table. "
+            f"Add it to colvars.save_cols or set colvars.save_cols: all."
+        )
+
+    x = pd.to_numeric(df[cv], errors="coerce").to_numpy(dtype=np.float64)
+    finite = np.isfinite(x)
+    op = str(cond.get("op", cond.get("operator", ""))).strip().lower()
+    if not op and any(k in cond for k in ("min", "max", "lower", "upper")):
+        op = "outside"
+
+    if op in (">", "gt", "greater", "greater_than"):
+        mask = x > _condition_threshold(cond)
+    elif op in (">=", "ge", "greater_equal", "greater_than_or_equal"):
+        mask = x >= _condition_threshold(cond)
+    elif op in ("<", "lt", "less", "less_than"):
+        mask = x < _condition_threshold(cond)
+    elif op in ("<=", "le", "less_equal", "less_than_or_equal"):
+        mask = x <= _condition_threshold(cond)
+    elif op in ("==", "eq", "equal"):
+        mask = x == _condition_threshold(cond)
+    elif op in ("!=", "ne", "not_equal"):
+        mask = x != _condition_threshold(cond)
+    elif op in ("inside", "between"):
+        lo, hi = _condition_range(cond)
+        mask = np.ones(len(df), dtype=bool)
+        if lo is not None:
+            mask &= x >= lo
+        if hi is not None:
+            mask &= x <= hi
+    elif op in ("outside", "out_of_range"):
+        lo, hi = _condition_range(cond)
+        mask = np.zeros(len(df), dtype=bool)
+        if lo is not None:
+            mask |= x < lo
+        if hi is not None:
+            mask |= x > hi
+    else:
+        raise SystemExit(
+            f"Unsupported weight_mask op '{op}' for CV '{cv}'. "
+            "Use >, >=, <, <=, ==, !=, inside, or outside."
+        )
+
+    return mask & finite
+
+def apply_cv_weight_mask(
+    df: pd.DataFrame,
+    weights: np.ndarray,
+    mask_cfg: Any,
+    *,
+    weight_col: str = "weight",
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Set frame weights to zero for frames matching CV-based conditions.
+
+    Example config:
+      weight_mask:
+        enabled: true
+        combine: any
+        renormalize: true
+        conditions:
+          - {cv: CV1, op: ">", threshold: 2.0}
+    """
+    conditions = _weight_mask_conditions(mask_cfg)
+    w = np.asarray(weights, dtype=np.float64).copy()
+    if w.shape[0] != len(df):
+        raise SystemExit(f"weight_mask weights length ({w.shape[0]}) != table rows ({len(df)}).")
+    if not conditions:
+        return w, np.zeros(len(df), dtype=bool)
+
+    combine = "any"
+    renormalize = True
+    if isinstance(mask_cfg, dict):
+        combine = str(mask_cfg.get("combine", "any")).lower()
+        renormalize = bool(mask_cfg.get("renormalize", True))
+
+    masks = [cv_condition_mask(df, cond) for cond in conditions]
+    if combine == "all":
+        zero_mask = np.logical_and.reduce(masks)
+    elif combine == "any":
+        zero_mask = np.logical_or.reduce(masks)
+    else:
+        raise SystemExit("weight_mask.combine must be 'any' or 'all'.")
+
+    before = w.copy()
+    w[zero_mask] = 0.0
+    if weight_col in df.columns:
+        df[weight_col] = w
+
+    if renormalize:
+        total = float(w.sum())
+        if total <= 0.0:
+            raise SystemExit("weight_mask zeroed all frame weights; relax the CV mask.")
+        w /= total
+        if weight_col in df.columns:
+            df[weight_col] = w
+
+    matched = int(zero_mask.sum())
+    weighted_matched = int(np.count_nonzero(zero_mask & (before > 0.0)))
+    print(
+        f"[INFO] CV weight mask zeroed {weighted_matched} weighted frames "
+        f"({matched} total matched); weight sum {before.sum():.8g} -> {w.sum():.8g}."
+    )
+    return w, zero_mask
 
 # =========================================================
 # === Features: distances / internal_zmat (atom_order or atomselect) ===
@@ -908,18 +1231,23 @@ def main():
     save_cols = cfg.get("colvars", {}).get("save_cols", "all")
     periodic_cols = cfg.get("colvars", {}).get("periodic_cols", [])
     periodic_cols = [periodic_cols] if isinstance(periodic_cols, str) else list(periodic_cols)
+    weight_mask_cfg = cfg.get("weight_mask", cfg.get("cv_weight_mask", {}))
 
     # --- committor label controls ---
     lab_cfg = cfg.get("committor_labels", {})
     label_enabled = bool(lab_cfg.get("enabled", False))
+    check_cv_pair = None
     if label_enabled:
         cvs_to_label = lab_cfg["cvs_to_label"]
+        if isinstance(cvs_to_label, str):
+            cvs_to_label = [cvs_to_label]
         basin_A = lab_cfg["basin_A"]
         basin_B = lab_cfg["basin_B"]
         basin_size = lab_cfg["basin_size"]
         k_pref = float(lab_cfg.get("k_prefactor", 1.0))
         angle_unit = str(lab_cfg.get("angle_unit", "degree")).lower()
         determine_AB = determine_AB_functor(basin_A, basin_B, basin_size)
+        check_cv_pair = committor_label_check_cv_pair(lab_cfg, cvs_to_label)
 
 
     if isinstance(cv_cols, str):
@@ -991,20 +1319,9 @@ def main():
         avg_last=avg_last, seed=seed
     )
 
-    # frame weights
-    CV_use = CV_all[res.frame_map]
-    w_use = res.w_frame_nonzero
-
-    # save weights
-    
-    # w_frame_full = np.zeros(X_all.shape[0], dtype=np.float64)
-    # w_frame_full[res.frame_map] = w_use
-    # np.savetxt(os.path.join(out, "frame_weights.csv"),
-    #            np.column_stack([np.arange(X_all.shape[0]), w_frame_full]),
-    #            delimiter=",", header="frame_index,weight", comments="")
     # --- frame weights (full length, zeros for frames not used as segment starts) ---
     w_frame_full = np.zeros(X_all.shape[0], dtype=np.float64)
-    w_frame_full[res.frame_map] = w_use
+    w_frame_full[res.frame_map] = res.w_frame_nonzero
 
     # --- build output table ---
     out_df = df_save_all.copy()
@@ -1025,6 +1342,10 @@ def main():
             out_df[f"s{cv}"] = np.sin(out_df[cv].to_numpy(dtype=float) * scale)
             out_df[f"c{cv}"] = np.cos(out_df[cv].to_numpy(dtype=float) * scale)
 
+    # --- optional CV-region masking: matched frames get zero frame weight ---
+    w_frame_full, _ = apply_cv_weight_mask(out_df, w_frame_full, weight_mask_cfg)
+    out_df["weight"] = w_frame_full
+
     # --- committor training A/B labels ---
     if label_enabled:
         miss = [c for c in cvs_to_label if c not in out_df.columns]
@@ -1040,13 +1361,36 @@ def main():
         out_df["Ka"] = np.where(states == "A", k_pref, 0.0)
         out_df["Kb"] = np.where(states == "B", k_pref, 0.0)
 
+        if check_cv_pair is not None:
+            save_committor_label_check(
+                out_df,
+                cv_pair=check_cv_pair,
+                out_dir=out,
+                cvs_to_label=cvs_to_label,
+                basin_A=basin_A,
+                basin_B=basin_B,
+                basin_size=basin_size,
+                lab_cfg=lab_cfg,
+            )
+
+    # PMF uses the masked frame weights.
+    pmf_frame_mask = w_frame_full > 0.0
+    if not np.any(pmf_frame_mask):
+        raise SystemExit("No nonzero frame weights remain for PMF after CV weight masking.")
+    CV_use = CV_all[pmf_frame_mask]
+    w_use = w_frame_full[pmf_frame_mask]
+    w_sum = float(w_use.sum())
+    if w_sum <= 0.0:
+        raise SystemExit("No positive PMF weight remains after CV weight masking.")
+    w_use = w_use / w_sum
+
     # --- write CSV ---
     frame_csv_path = os.path.join(out, "frame_weights.csv")
     out_df.to_csv(frame_csv_path, index=False)
     print(f"[OK] Saved extended frame weights + colvars (+ labels) to: {frame_csv_path}")
     
     np.savetxt(os.path.join(out, "segment_weights.csv"),
-               np.column_stack([np.arange(res.w_segment.size), res.w_segment]),
+               np.column_stack([np.arange(seg_start.size), w_frame_full[seg_start]]),
                delimiter=",", header="segment_index,weight", comments="")
 
     # convergence

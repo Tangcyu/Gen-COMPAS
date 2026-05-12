@@ -1,0 +1,67 @@
+VCN2:
+  seed: 1234
+  device: cuda:0
+
+  output:
+    out_dir: ./vcn2_output
+
+  data:
+    traj_fns: [./example_traj.csv.gz]
+    cvs: [cv1, cv2, cv3]
+    time_shift: 1
+    val_ratio: 0.1
+
+  normalization:
+    method: standard
+
+  model:
+    hidden_layers: [128, 128, 64]
+    activation: elu
+    input_clip: 6.0
+
+  training:
+    device: cuda:0
+    dataset_device: auto
+    gpu_dataset_max_gb: 4.0
+    epochs: 500
+    patience: 30
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-5
+    batch_size_factor: 0.6
+    min_batch_size: 65536
+    val_batch_size: 262144
+    validation_interval: 1
+    save_best_each_improvement: false
+
+  loss:
+    endpoint_scale: 100.0
+    input_noise_std: 0.0
+    gradient_l2_scale: 0.0
+
+  trained_model:
+    path: ./vcn2_output/models/best_model.pt
+
+  path:
+    device: cuda:0
+    n_paths: 200
+    initial_q_center: 0.5
+    initial_q_window: 0.1
+    step_size: 0.05
+    max_steps: 300
+    delta_q: 1.0e-3
+    num_images: 64
+
+  clustering:
+    device: cuda:0
+    threshold: 0.25
+
+  analysis:
+    device: cuda:0
+    max_points: 100000
+    path_dir: ./vcn2_output/paths
+    dominance_share_warn: 0.5
+
+  plotting:
+    device: cuda:0
+    cvs: [cv1, cv2]
+    out_dir: ./vcn2_output/plots

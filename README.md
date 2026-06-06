@@ -166,6 +166,28 @@ Actual statistical weight calculation and free energy estimation should be perfo
 <li><strong>colvars_mismatch:</strong> Handle colvars/dcd mismatch for NAMD outputs.</li>
 </ul>
 
+<h2>Practical Guidance for Parameter Tuning</h2>
+
+<p>
+The hyperparameters provided in the configuration file and manuscript should be treated as empirically validated settings for the systems studied here, rather than universal constants. In practice, most machine-learning hyperparameters were not tuned separately for each system. For the complex systems considered in this work, we used the same generative-model architecture, optimizer settings, training protocol, and diffusion-related hyperparameters across applications. The batch size was adjusted only when required by GPU memory limitations. The exact values used for each application are reported in the corresponding configuration files and in the manuscript.
+</p>
+
+<p>
+For the Variational Committor Network (VCN), the lag time <code>tau</code> is only weakly sensitive within a broad physically meaningful range. Training is mainly affected when <code>tau</code> is chosen at pathological limits. If <code>tau</code> is too short, for example on the order of approximately 1 fs, the data may retain non-Markovian vibrational correlations. If <code>tau</code> is too long, for example on the order of approximately 1 ns, transition-region correlations may be largely lost and the training statistics can deteriorate. Between these limits, the learned committor is only weakly affected by the precise choice of <code>tau</code>. The values used in the present applications are provided in the example configuration files and in the manuscript.
+</p>
+
+<p>
+The parameters that require the most practical attention are the targeted molecular dynamics (TMD) force constant and the noise level used during generative sampling. The TMD force constant should be large enough to reduce the RMSD to the generated target over the chosen TMD duration, but not so large that it produces abrupt structural distortions or unstable forces. We recommend choosing this parameter by inspecting the initial and final RMSD distributions, especially the first and final 2% of each TMD trajectory. A useful setting should produce a clear decrease in the final RMSD while maintaining structurally plausible trajectories.
+</p>
+
+<p>
+For generative sampling, we recommend noise values in the approximate range <code>0</code>–<code>50</code>. Larger values can be useful during the initial iterations, especially when the available trajectories are short or sparse, because they increase the diversity of generated intermediates and help initialize subsequent sampling. After additional transition data have been accumulated, smaller values, typically <code>0</code>–<code>2</code>, are usually sufficient.
+</p>
+
+<p>
+Increasing the sampling noise moves generated structures farther from the current data distribution and improves diversity, whereas decreasing the noise keeps generated structures closer to previously sampled configurations but reduces exploration. In all cases, the final acceptance criterion should not be the generative loss alone, but the downstream molecular dynamics diagnostics, including TMD convergence, bidirectional committor consistency, shooting validation where feasible, and reproducibility across independent Gen-COMPAS runs.
+</p>
+
 <h2>Dependencies</h2>
 
 <p><strong>Core requirements:</strong></p>

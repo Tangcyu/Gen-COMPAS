@@ -101,7 +101,7 @@ NAMD:
   namd_path         : "/PATH/TO/namd3"      # NAMD executable or command available on PATH
   template_path     : "/PATH/TO/NAMD_inputs" # Directory copied into every isolated job
   output_dir        : "./output_namd"
-  tmd_force_constant: 10000.0               # Replaces TMDk in every TMD template
+  tmd_force_constant: 10000.0               # Replaces TMDk in every TMD template (full system force constant, kcal/mol/Å²)
   existing_job_policy: "error"              # error or skip; existing jobs are never overwritten
 
   targets:

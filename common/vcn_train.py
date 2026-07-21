@@ -23,6 +23,7 @@ from vcn.zmatrix import (
     get_pair_distances,
     get_minimal_internal_coordinates,
 )
+from tools.tensor_table import load_tensor_table
 
 # =========================================================
 # === Utility functions ===
@@ -57,15 +58,20 @@ def prepare_output_dir(out_dir):
 # === Trajectory Loading ===
 # =========================================================
 
-def load_csv_trajectories(path0, label, traj_fns, stride):
-    """Load CSV trajectory files."""
-    traj_fns = [os.path.join(path0, fn) for fn in traj_fns]
-    print(f"Found CSV files: {traj_fns}")
+def load_training_trajectories(path0, label, traj_fns, stride):
+    """Load and concatenate RiteWeight Torch tables or legacy CSV tables."""
+    if isinstance(traj_fns, str):
+        traj_fns = [traj_fns]
+    traj_fns = [fn if os.path.isabs(fn) else os.path.join(path0, fn) for fn in traj_fns]
+    print(f"Found VCN training tables: {traj_fns}")
 
-    if len(traj_fns) == 1:
-        traj = pd.read_csv(traj_fns[0])
-    else:
-        traj = pd.concat([pd.read_csv(fn) for fn in traj_fns], ignore_index=True)
+    tables = []
+    for filename in traj_fns:
+        if filename.lower().endswith((".pt", ".pth")):
+            tables.append(load_tensor_table(filename))
+        else:
+            tables.append(pd.read_csv(filename))
+    traj = tables[0] if len(tables) == 1 else pd.concat(tables, ignore_index=True)
 
     if stride is not None:
         traj = traj[::int(stride)]
@@ -162,7 +168,7 @@ def train_committor_model(config):
     k_scale = config.get("k", 1000.0)
 
     # --- Load trajectories ---
-    traj = load_csv_trajectories(path0, label, traj_fns, stride)
+    traj = load_training_trajectories(path0, label, traj_fns, stride)
 
     if periodic:
         cvs = ["s" + cv for cv in cvs] + ["c" + cv for cv in cvs]

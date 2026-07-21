@@ -1,0 +1,43 @@
+# Archived PCA-based reweighting and restrained-trajectory FEL configuration.
+# These sections are retained for reproducibility but are no longer dispatched by run.py.
+
+Reweighting:
+  topology_file: "PATH/TO/PSF.psf"
+  dcd_folder: "PATH/TO/DCD/FOLDER/"
+  match: "unbias"
+  output_dir: "./output_reweighting"
+  sel_weights: "protein and not name H*"
+  sel_output: "protein and not name H*"
+  method: "pca"
+  dim: 2
+  split: 0.1
+  colvars_mismatch: true
+  temperature: 300
+  cvs_to_label: ["CVs LIST"]
+  periodic: false
+  basin_A: [0.0, 10.0]
+  basin_B: [10.0, 0.0]
+  basin_size: [5.0, 5.0]
+
+FEL_estimate:
+  folders:
+    - "./runs/set1"
+    - "./runs/set2"
+  match: "unbias"
+  match_bias: "log.restrained"
+  stride: 1
+  log_column: 12
+  cv_names: ["CVs LIST"]
+  temperature: 300
+  bins: [200, 200]
+  cvmins: [0, 0]
+  cvmaxs: [180, 180]
+  periodicities: [1, 1]
+  overlap_threshold: 1.0e-4
+  min_overlap_bins: 20
+  sigma: [1.0, 1.0]
+  F_max: 10.0
+  output: "free_energy.dat"
+  scaled_bins: 100
+  scaled_output: "free_energy_scaled.dat"
+  verbose: true

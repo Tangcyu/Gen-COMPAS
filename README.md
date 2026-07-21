@@ -18,9 +18,7 @@ It combines <strong>diffusion models</strong> for structure generation with <str
 For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
 </p>
 
-<p>
-An implementation of Riteweight is available in the <strong><code>riteweight</code></strong> branch of this repository.
-</p>
+<p>The RiteWeight implementation and its downstream weighted FEL projection are available through <code>run.py</code>.</p>
 
 <h2>Overview</h2>
 
@@ -71,9 +69,14 @@ An implementation of Riteweight is available in the <strong><code>riteweight</co
 <td>Add hydrogen atoms and set occupancy flags in PDB files for visualization or targeted MD.</td>
 </tr>
 <tr>
-<td><code>reweighting</code></td>
-<td><code>run_reweighting()</code></td>
-<td>Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA).</td>
+<td><code>riteweight</code></td>
+<td><code>run_riteweight()</code></td>
+<td>Compute trajectory weights and emit aligned VCN and diffusion training data.</td>
+</tr>
+<tr>
+<td><code>fel_estimate</code></td>
+<td><code>run_fel_estimate()</code></td>
+<td>Project RiteWeight results into weighted 1D or 2D free-energy landscapes.</td>
 </tr>
 </tbody>
 </table>
@@ -85,6 +88,12 @@ An implementation of Riteweight is available in the <strong><code>riteweight</co
 <pre><code>python run.py --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
 </code></pre>
 
+<p>RiteWeight and FEL projection use the corresponding sections in the unified <code>config.yaml</code>:</p>
+
+<pre><code>python run.py --step riteweight --config config.yaml
+python run.py --step fel_estimate --config config.yaml
+</code></pre>
+
 <p><strong>Available <code>&lt;STEP_NAME&gt;</code> options:</strong></p>
 <ul>
 <li><code>train_diffusion</code></li>
@@ -93,7 +102,8 @@ An implementation of Riteweight is available in the <strong><code>riteweight</co
 <li><code>committor_analysis</code></li>
 <li><code>clustering</code></li>
 <li><code>occupancy</code></li>
-<li><code>reweighting</code></li>
+<li><code>riteweight</code></li>
+<li><code>fel_estimate</code></li>
 </ul>
 
 <h2>Configuration File (config.yaml)</h2>
@@ -150,21 +160,25 @@ Below is a summary of each section.
 <li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
 </ul>
 
-<h3>5. Reweighting (Reweighting)</h3>
+<h3>5. RiteWeight (RiteWeight)</h3>
 
 <p>
-Prepare trajectory data for statistical reweighting and dimensionality reduction (e.g., PCA or TICA).
-Actual statistical weight calculation and free energy estimation should be performed using the
-<strong>Riteweight</strong> method described in the paper linked above.
+Compute statistical weights and aligned training artifacts using the
+<strong>RiteWeight</strong> method described in the paper linked above.
 </p>
 
 <p><strong>Key options:</strong></p>
 <ul>
-<li><strong>method:</strong> Dimensionality reduction approach (pca, tica, etc.).</li>
-<li><strong>temperature:</strong> Simulation temperature.</li>
-<li><strong>cvs_to_label, basin_A/B:</strong> Define basins for state labeling.</li>
-<li><strong>colvars_mismatch:</strong> Handle colvars/dcd mismatch for NAMD outputs.</li>
+<li><strong>io:</strong> Topology, output directory, and trajectory stride.</li>
+<li><strong>features:</strong> Distance or internal-Z-matrix features, with optional caching.</li>
+<li><strong>riteweight:</strong> Cluster count, lag, iteration, convergence, and random-seed controls.</li>
+<li><strong>colvars:</strong> CV retention and optional periodic encodings.</li>
+<li><strong>outputs:</strong> Torch VCN table and selected DCD/PDB files for diffusion training.</li>
 </ul>
+
+<h3>6. Weighted FEL Projection (FEL_estimate)</h3>
+
+<p>Build one or more weighted 1D/2D free-energy projections directly from the RiteWeight Torch or CSV table.</p>
 
 <h2>Practical Guidance for Parameter Tuning</h2>
 

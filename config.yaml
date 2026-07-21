@@ -8,8 +8,8 @@ Generative:
   device: 'cuda:0'                         # CUDA device to use (e.g., 'cuda:0' or 'cpu')
   random_seed: 42                          # Random seed for reproducibility
   data:
-    dcd_path: PATH/TO/YOUR/DCD/FILES/*.dcd # List of paths to DCD files for training
-    psf_path: PATH/TO/YOUR/PSF/FILE.psf    # Path to the corresponding topology PSF file
+    dcd_path: "./output_riteweight/diffusion_training.dcd"
+    psf_path: "./output_riteweight/diffusion_training.pdb"
 
   model:
     node_feature_dim: 64                   # Dimension for node embeddings (residue, atom type, coords)
@@ -38,7 +38,7 @@ Generative:
     output:     "PATH/TO/OUTPUT/directory" # Directory to save generated samples
     num_samples: 1000                      # Number of samples to generate
     sample_batch: 100                      # Batch size for sampling (adjust based on GPU memory)
-    noise_scale: 1.5                       # Scale of initial noise 
+    noise_scale: 1.5                       # Scale of initial noise
 
 ############ VCN Committor model configuration ############
 VCN:
@@ -46,18 +46,18 @@ VCN:
   device         : 'cuda:0'                # CUDA device to use (e.g., 'cuda:0' or 'cpu')
   label          : "test"
 
-  Sampling_path  : "PATH/TO/YOUR/SAMPLING/DATA/"
+  Sampling_path  : "."
   z_matrix       : True
   use_all        : False
-  pair_distances : False
-  dcdfile        : ["NAME/OF/YOUR/Unbiased_TRAJECTORY.dcd"]
-  traj_fns       : ["PATH/TO/YOUR/Unbiased_TRAJECTORY_weights.csv"]
-  topfile        : "NAME/OF/YOUR/TOPOLOGY.psf"
-  atomindex      : [ATOM INDICES LIST]
-  atomselect     : "ATOM SELECTION STRING IN mdtraj FORMAT"
+  pair_distance  : False
+  dcdfile        : ["./output_riteweight/diffusion_training.dcd"]
+  traj_fns       : ["./output_riteweight/vcn_training.pt"]
+  topfile        : "./output_riteweight/diffusion_training.pdb"
+  atomindex      : []
+  atomselect     : "protein and name CA"
   stride         : 1
 
-  cvs            :  ["CVs LIST"]            # CVs for training the VCN, only if z_matrix is False
+  cvs            : ["CV1", "CV2"]          # Used only if z_matrix is false
   periodic       :  False                   # Periodicity of the CVs, only if z_matrix is False
 
   # Training parameters
@@ -70,7 +70,7 @@ VCN:
   k              :  1                       #  Value of the force constant of the restraints at the basins
 
   out_dir        : "PATH/TO/OUTPUT/"        # Output folder for model and results
-  cvs_to_plot    : [CVs LIST]               # CVs to plot in the analysis step, only 2D or 3D supported
+  cvs_to_plot    : ["CV1", "CV2"]          # CVs to plot in the analysis step, only 2D or 3D supported
 
   # Settings for slicing intermediate frames based on committor values
   gendcdfile     : "PATH/TO/GENERATED.dcd"  # DCD file to slice frames from (generated from generative model)
@@ -96,53 +96,87 @@ Occupancy:
   add_hydrogens  : true                     # if false, only occupancy is set
   selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
 
-Reweighting:
-  topology_file : "PATH/TO/PSF.psf"
-  dcd_folder    : "PATH/TO/DCD/FOLDER/"     # Folder containing Unbiased DCD files to concatenate and reweight
-  match         : "unbias"                  # String to match in DCD and colvars filenames for unbiased trajectories
-  output_dir    : "./output_reweighting"    # Directory to save concatenated DCD and weights
-  sel_weights   : "protein and not name H*" # Atom selection for reweighting 
-  sel_output    : "protein and not name H*" # Atom selection for output DCD 
-
-  method        : "pca"                     # Reweighting method
-  dim           : 2                         # Number of dimensions for PCA
-  split         : 0.1                       # Fraction of trajectory for reweighting
-  colvars_mismatch : True                   # Mismatch colvars in colvars.traj and dcdfile (If true, the step 0 of colvars.traj is ignored)
-  temperature   : 300                        # Temperature in Kelvin
-
-  cvs_to_label  : ["CVs LIST"]               # CVs for labeling the basins
-  periodic      : False                      # Periodicity of the CVs
-  basin_A       : [0.0, 10.0]                # Center of Basin A definition in colvar values
-  basin_B       : [10.0, 0.0]                # Center of Basin B definition in colvar values
-  basin_size    : [5.0, 5.0]                 # Size of the basins in colvar units
-
-FEL_estimate:
+############ RiteWeight configuration ############
+RiteWeight:
   folders:
-    - "./runs/set1"                          # One or more folders to search recursively for trajectories
-    - "./runs/set2"
+    - "PATH/TO/TRAJECTORY/FOLDER"
+  match_dcd: "unbias"                       # Matches *unbias*.dcd recursively
+  match_colvars: "unbias"                   # Matches *unbias*.colvars.traj recursively
+  tag_regex: "([ABM])"                      # Tag used to pair DCD and colvars files
 
-  match: "unbias"                            # Substring pattern used to identify colvars files (e.g. "*unbias*.colvars.traj")
-  match_bias: "log.restrained"               # Substring pattern for log files for restrained MD (e.g. "*log.restrained*")
-  stride: 1                                  # Stride for reading frames from trajectories
+  io:
+    top: "PATH/TO/TOPOLOGY.psf"
+    out: "./output_riteweight"
+    stride: 1
 
-  log_column: 12                             # Column index (1-based) in the NAMD bias log containing the energy of the restraint
-  cv_names: ["CVs LIST"]                     # Names of the collective variables in the colvars files
-  temperature: 300                           # Temperature in Kelvin
+  pairing:
+    allow_skip_first_colvars: true
+    strict: false
 
-  bins: [200, 200]                           # Number of bins for each CV
-  cvmins: [0, 0]                             # Minimum values for each CV
-  cvmaxs: [180, 180]                         # Maximum values for each CV
-  periodicities: [1, 1]                      # Periodicity flags for each CV (1 = periodic, 0 = non-periodic)
+  features:
+    mode: "internal_zmat"                   # internal_zmat, internal_zmat_cached, or distances
+    internal_zmat:
+      atomselect: "protein and name CA"     # MDTraj selection used to construct 3N-6 features
+      atom_order: null                       # Optional explicit zero-based atom index order
+      max_atoms: null
+      order: "index"
+    distances:
+      atom_pairs: []                         # Used only when mode is distances
+    cache:
+      enabled: true
+      format: "npz"
+      path: "./output_riteweight/features_internal_zmat.npz"
+      policy: "write_if_missing"            # write_if_missing or force_recompute
 
-  overlap_threshold: 1e-4                    # Threshold for overlap-constant matching
-  min_overlap_bins: 20                       # Minimum number of overlapping bins required
+  riteweight:
+    n_clusters: 100
+    n_iter: 200
+    tol: 1.0e-6
+    tol_window: 5
+    avg_last: 20
+    seed: 2026
+    lag: 50
 
-  sigma: [1.0, 1.0]                          # Gaussian smoothing sigma in units of bins (per dimension)
-  F_max: 10.0                                # Maximum free energy value to cap at (in kcal/mol)
-  output: "free_energy.dat"                  # Output file for free energy surface, including a figure in PDF format
-  scaled_bins: 100                           # Number of bins for scaled free energy output
-  scaled_output: "free_energy_scaled.dat"    # Output file for scaled free energy surface, including a figure in PDF format
-  verbose: true                              # Whether to print detailed logs during processing
+  colvars:
+    cv: ["CV1", "CV2"]                     # CVs retained for downstream FEL projections
+    save_cols: "all"
+    periodic_cols: []                       # Columns receiving sin/cos encodings for VCN
 
-  
+  committor_labels:
+    enabled: true
+    cvs_to_label: ["CV1", "CV2"]
+    basin_A: [0.0, 10.0]
+    basin_B: [10.0, 0.0]
+    basin_size: [5.0, 5.0]
+    k_prefactor: 1.0
+    angle_unit: "degree"
 
+  outputs:
+    frame_csv: "frame_weights.csv"
+    segment_csv: "segment_weights.csv"
+    convergence_plot: "convergence_delta.png"
+    vcn:
+      enabled: true
+      filename: "vcn_training.pt"           # Tensor table loadable with torch.load
+    diffusion:
+      enabled: true
+      trajectory: "diffusion_training.dcd"
+      topology: "diffusion_training.pdb"    # Matching selected topology for the DCD
+      atomselect: "protein and not element H"
+      chunk_size: 1000
+
+############ Weighted FEL projections from RiteWeight ############
+FEL_estimate:
+  input: "./output_riteweight/vcn_training.pt"  # RiteWeight .pt or frame_weights.csv
+  output_dir: "./output_riteweight/fel"
+  weight_column: "weight"
+  temperature_K: 300.0
+  probability_floor: 1.0e-300
+  projections:
+    - name: "CV1_CV2"
+      cvs: ["CV1", "CV2"]
+      bins: [200, 200]
+      ranges: [[0.0, 180.0], [0.0, 180.0]]
+      periodicities: [true, true]
+      sigma_bins: [1.0, 1.0]
+      F_max: 10.0

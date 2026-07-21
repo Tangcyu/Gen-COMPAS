@@ -15,7 +15,7 @@ def build_parser():
         help=(
             'Step to run: "train_diffusion", "sample_diffusion", '
             '"train_committor", "committor_analysis", "clustering", '
-            '"occupancy", "reweighting"'
+            '"occupancy", "riteweight", "fel_estimate"'
         ),
     )
     parser.add_argument(
@@ -53,19 +53,30 @@ def main(argv=None):
     elif args.step == "occupancy":
         from tools.occupancy import add_occupancy
         add_occupancy(config["Occupancy"])
-    elif args.step == "reweighting":
-        from tools.reweighting import run_reweighting
-        run_reweighting(config["Reweighting"])
-
-    # elif args.step == "fel_estimate":
-    #     from tools.felestimate import run_fel_estimate
-    #     run_fel_estimate(config["FEL_estimate"])
+    elif args.step == "riteweight":
+        from tools.riteweight import run_riteweight
+        # Prefer the unified Gen-COMPAS config, while still accepting a
+        # RiteWeight-only mapping for programmatic use.
+        riteweight_config = config.get("RiteWeight")
+        if riteweight_config is None:
+            required_keys = {"folders", "io", "colvars", "features", "riteweight"}
+            if required_keys.issubset(config):
+                riteweight_config = config
+            else:
+                raise KeyError(
+                    "RiteWeight step requires a 'RiteWeight' config section."
+                )
+        run_riteweight(riteweight_config)
+    elif args.step == "fel_estimate":
+        from tools.felestimate import run_fel_estimate
+        run_fel_estimate(config["FEL_estimate"])
 
     else:
         raise ValueError(
             f"Unknown step: {args.step}. Choose from "
             "'train_diffusion', 'sample_diffusion', 'train_committor', "
-            "'committor_analysis', 'clustering', 'occupancy', 'reweighting'."
+            "'committor_analysis', 'clustering', 'occupancy', 'riteweight', "
+            "'fel_estimate'."
         )
 
 

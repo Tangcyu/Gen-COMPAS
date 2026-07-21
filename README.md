@@ -69,6 +69,11 @@ For computing statistical weights and estimating free energy landscapes, please 
 <td>Add hydrogen atoms and set occupancy flags in PDB files for visualization or targeted MD.</td>
 </tr>
 <tr>
+<td><code>namd</code></td>
+<td><code>run_namd_workflow()</code></td>
+<td>Run parallel targeted MD followed by unbiased MD with CPU or GPU NAMD commands.</td>
+</tr>
+<tr>
 <td><code>riteweight</code></td>
 <td><code>run_riteweight()</code></td>
 <td>Compute trajectory weights and emit aligned VCN and diffusion training data.</td>
@@ -92,6 +97,7 @@ For computing statistical weights and estimating free energy landscapes, please 
 
 <pre><code>python run.py --step riteweight --config config.yaml
 python run.py --step fel_estimate --config config.yaml
+python run.py --step namd --config config.yaml
 </code></pre>
 
 <p>VCN training and committor slicing use the same fixed-anchor internal-coordinate implementation as RiteWeight. The workflow validates the atom selection and feature settings before either VCN step runs.</p>
@@ -104,6 +110,7 @@ python run.py --step fel_estimate --config config.yaml
 <li><code>committor_slice</code></li>
 <li><code>clustering</code></li>
 <li><code>occupancy</code></li>
+<li><code>namd</code></li>
 <li><code>riteweight</code></li>
 <li><code>fel_estimate</code></li>
 </ul>
@@ -162,7 +169,21 @@ Below is a summary of each section.
 <li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
 </ul>
 
-<h3>5. RiteWeight (RiteWeight)</h3>
+<h3>5. NAMD Sampling (NAMD)</h3>
+
+<p>Copy a NAMD template directory for every target/protocol pair, replace the TMD force constant and target PDB, then run TMD followed by unbiased MD. Independent jobs can run concurrently with configurable CPU or GPU commands.</p>
+
+<p><strong>Key options:</strong></p>
+<ul>
+<li><strong>namd_path, template_path:</strong> NAMD executable and reusable input directory.</li>
+<li><strong>tmd_force_constant:</strong> Value inserted into the active <code>TMDk</code> directive.</li>
+<li><strong>protocols:</strong> Paired TMD and unbiased templates, such as A and B.</li>
+<li><strong>execution:</strong> Parallel-job limit, CPU/GPU mode, device slots, threads, and command templates.</li>
+</ul>
+
+<p>TMD templates may use <code>{{TMD_FORCE_CONSTANT}}</code> and <code>{{TARGET_PDB}}</code>. The runner also replaces active <code>TMDk</code> and <code>TMDFile</code> directives directly, so the existing example templates work without conversion.</p>
+
+<h3>6. RiteWeight (RiteWeight)</h3>
 
 <p>
 Compute statistical weights and aligned training artifacts using the
@@ -178,7 +199,7 @@ Compute statistical weights and aligned training artifacts using the
 <li><strong>outputs:</strong> Torch VCN table and selected DCD/PDB files for diffusion training.</li>
 </ul>
 
-<h3>6. Weighted FEL Projection (FEL_estimate)</h3>
+<h3>7. Weighted FEL Projection (FEL_estimate)</h3>
 
 <p>Build one or more weighted 1D/2D free-energy projections directly from the RiteWeight Torch or CSV table.</p>
 

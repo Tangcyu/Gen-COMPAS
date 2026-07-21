@@ -96,13 +96,53 @@ Occupancy:
   add_hydrogens  : true                     # if false, only occupancy is set
   selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
 
+############ Parallel TMD and unbiased NAMD simulations ############
+NAMD:
+  namd_path         : "/PATH/TO/namd3"      # NAMD executable or command available on PATH
+  template_path     : "/PATH/TO/NAMD_inputs" # Directory copied into every isolated job
+  output_dir        : "./output_namd"
+  tmd_force_constant: 10000.0               # Replaces TMDk in every TMD template
+  existing_job_policy: "error"              # error or skip; existing jobs are never overwritten
+
+  targets:
+    path           : "./output_pdbs"        # Generated target structures
+    pattern        : "*.pdb"
+    recursive      : false
+    target_filename: "output.pdb"           # Filename used by TMDFile inside each job
+
+  # Each target/protocol pair is one job. Its TMD phase must finish before
+  # the corresponding unbiased phase starts.
+  protocols:
+    - name: "A"
+      tmd_template: "TMD.A.conf"
+      unbiased_template: "Unbiased.A.conf"
+    - name: "B"
+      tmd_template: "TMD.B.conf"
+      unbiased_template: "Unbiased.B.conf"
+
+  phases:
+    tmd     : true
+    unbiased: true
+
+  execution:
+    device      : "gpu"                    # cpu or gpu
+    parallel_jobs: 2                        # Maximum simultaneous NAMD processes
+    dry_run     : false                     # If true, prepare jobs and commands without NAMD execution
+    cpu:
+      threads_per_job: 8
+      command: ["{namd}", "+p{threads}", "{config}"]
+    gpu:
+      devices: ["0", "1"]                 # One device slot per parallel GPU job
+      threads_per_job: 1
+      command: ["{namd}", "+p{threads}", "+devices", "{device}", "{config}"]
+
 ############ RiteWeight configuration ############
 RiteWeight:
   folders:
     - "PATH/TO/TRAJECTORY/FOLDER"
   match_dcd: "unbias"                       # Matches *unbias*.dcd recursively
   match_colvars: "unbias"                   # Matches *unbias*.colvars.traj recursively
-  tag_regex: "([ABM])"                      # Tag used to pair DCD and colvars files
+  tag_regex: "([AB])"                       # Tag used to pair DCD and colvars files
 
   io:
     top: "PATH/TO/TOPOLOGY.psf"

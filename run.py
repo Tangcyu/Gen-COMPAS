@@ -15,7 +15,7 @@ def build_parser():
         help=(
             'Step to run: "train_diffusion", "sample_diffusion", '
             '"train_committor", "committor_slice", "clustering", '
-            '"occupancy", "riteweight", "fel_estimate"'
+            '"occupancy", "namd", "riteweight", "fel_estimate"'
         ),
     )
     parser.add_argument(
@@ -53,6 +53,9 @@ def main(argv=None):
     elif args.step == "occupancy":
         from tools.occupancy import add_occupancy
         add_occupancy(config["Occupancy"])
+    elif args.step == "namd":
+        from tools.namd import run_namd_workflow
+        run_namd_workflow(config["NAMD"])
     elif args.step == "riteweight":
         from tools.riteweight import run_riteweight
         # Prefer the unified Gen-COMPAS config, while still accepting a
@@ -75,7 +78,7 @@ def main(argv=None):
         raise ValueError(
             f"Unknown step: {args.step}. Choose from "
             "'train_diffusion', 'sample_diffusion', 'train_committor', "
-            "'committor_slice', 'clustering', 'occupancy', 'riteweight', "
+            "'committor_slice', 'clustering', 'occupancy', 'namd', 'riteweight', "
             "'fel_estimate'."
         )
 

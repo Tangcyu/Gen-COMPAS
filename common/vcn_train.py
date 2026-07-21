@@ -24,6 +24,7 @@ from vcn.zmatrix import (
     get_minimal_internal_coordinates,
 )
 from tools.tensor_table import load_tensor_table
+from common.feature_contract import validate_riteweight_vcn_featurization
 
 # =========================================================
 # === Utility functions ===
@@ -137,8 +138,11 @@ def convert_to_zmatrix(dcdtraj, atomselect, atomindex, topfile, path0, use_all, 
 # === Training pipeline ===
 # =========================================================
 
-def train_committor_model(config):
+def train_committor_model(config, riteweight_config=None):
     """Main training routine."""
+
+    if riteweight_config is not None:
+        validate_riteweight_vcn_featurization(config, riteweight_config)
 
     # --- Extract configuration values ---
     label = config.get("label", "default_label")
@@ -229,7 +233,7 @@ def main():
         print(f"Error: Config file {config_path} does not exist.")
         sys.exit(1)
     config = load_yaml_config(config_path)
-    train_committor_model(config["VCN"])
+    train_committor_model(config["VCN"], config.get("RiteWeight"))
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from scipy.interpolate import interpn
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+from common.feature_contract import FEATURE_SCHEMA
 from tools.tensor_table import save_tensor_table
 
 try:
@@ -25,6 +26,8 @@ try:
     import mdtraj as md
 except ImportError as e:
     raise SystemExit("Need mdtraj. Install: pip install mdtraj") from e
+
+from vcn.zmatrix import get_minimal_internal_coordinates
 
 KB_KCAL_PER_MOL_K = 0.00198720425864083
 
@@ -192,45 +195,17 @@ def resolve_zmat_atoms(
 
 def features_internal_zmat(traj: "md.Trajectory", atom_order: List[int]) -> np.ndarray:
     """
-    Deterministic 3N-6 internal coordinates via a simple Z-matrix-like definition.
+    Return the exact internal-coordinate representation used by VCN.
 
-      - r01 = dist(a0,a1)
-      - r02 = dist(a0,a2)
-      - ang102 = angle(a1,a0,a2)
-      - for k>=3:
-          r0k  = dist(a0, ak)
-          ang10k = angle(a1,a0, ak)
-          dih210k = dihedral(a2,a1,a0, ak)
-
-    Total features: 3 + 3*(N-3) = 3N-6 (nonlinear).
+    ``get_minimal_internal_coordinates`` accepts one-based atom indices;
+    RiteWeight resolves zero-based MDTraj indices, so convert only the index
+    convention here and keep all feature computation in the shared function.
     """
     ao = list(map(int, atom_order))
     if len(ao) < 4:
         raise ValueError("internal_zmat needs N>=4 atoms.")
-
-    a0, a1, a2 = ao[0], ao[1], ao[2]
-
-    dist_pairs = [(a0, a1), (a0, a2)] + [(a0, ak) for ak in ao[3:]]
-    D = md.compute_distances(traj, np.array(dist_pairs, dtype=int))  # (F, 2 + N-3)
-
-    ang_triples = [(a1, a0, a2)] + [(a1, a0, ak) for ak in ao[3:]]
-    A = md.compute_angles(traj, np.array(ang_triples, dtype=int))    # (F, 1 + N-3)
-
-    dih_quads = [(a2, a1, a0, ak) for ak in ao[3:]]
-    H = md.compute_dihedrals(traj, np.array(dih_quads, dtype=int))   # (F, N-3)
-
-    X = np.concatenate(
-        [
-            D[:, [0]],          # r01
-            D[:, [1]],          # r02
-            A[:, [0]],          # ang102
-            D[:, 2:],           # r0k
-            A[:, 1:],           # ang10k
-            H,                  # dih210k
-        ],
-        axis=1,
-    )
-    return X
+    _, values = get_minimal_internal_coordinates(traj, [index + 1 for index in ao])
+    return values
 
 
 # =========================================================
@@ -498,6 +473,7 @@ def cache_meta_dict(mode: str, cfg_features: dict, top_path: str, stride: int, l
     """Minimal metadata to validate cache reproducibility."""
     meta = {
         "mode": mode,
+        "feature_schema": FEATURE_SCHEMA,
         "top": os.path.abspath(top_path),
         "stride": int(stride),
         "lag": int(lag),
@@ -608,12 +584,8 @@ def load_or_compute_features_with_cache(
         else:
             Xc, meta = load_features_csv(cache_path)
         # validate meta if present
-        if meta is not None:
-            if meta_to_string(meta) != meta_to_string(meta_expected):
-                msg = "[WARN] Feature cache metadata differs from current config/top/stride/lag. " \
-                      "Results may be inconsistent. Consider force_recompute."
-                print(msg)
-        return Xc
+        matches = meta is not None and meta_to_string(meta) == meta_to_string(meta_expected)
+        return Xc, matches
 
     # We always need CV_all and segments, so we still loop through pairs to:
     # - align colvars
@@ -700,7 +672,12 @@ def load_or_compute_features_with_cache(
     if require_cache:
         if not cache_exists:
             raise SystemExit("features.mode=internal_zmat_cached but cache file not found.")
-        X_all = load_cache()
+        X_all, cache_matches = load_cache()
+        if not cache_matches:
+            raise SystemExit(
+                "Cached features were created with a different feature schema or config. "
+                "Use features.mode=internal_zmat and cache.policy=force_recompute first."
+            )
         if X_all.shape[0] != CV_all.shape[0]:
             raise SystemExit(f"Cached features rows ({X_all.shape[0]}) != total frames from colvars ({CV_all.shape[0]}). "
                              "Cache does not match current dataset.")
@@ -708,11 +685,13 @@ def load_or_compute_features_with_cache(
 
     if cache_enabled and cache_exists and not force_recompute:
         print(f"[INFO] Loading features from cache: {cache_path}")
-        X_all = load_cache()
-        if X_all.shape[0] != CV_all.shape[0]:
-            raise SystemExit(f"Cached features rows ({X_all.shape[0]}) != total frames from colvars ({CV_all.shape[0]}). "
-                             "Cache does not match current dataset.")
-        return X_all, CV_all, seg_start, seg_end, df_save_all, used_pairs, nframes_each
+        X_all, cache_matches = load_cache()
+        if cache_matches:
+            if X_all.shape[0] != CV_all.shape[0]:
+                raise SystemExit(f"Cached features rows ({X_all.shape[0]}) != total frames from colvars ({CV_all.shape[0]}). "
+                                 "Cache does not match current dataset.")
+            return X_all, CV_all, seg_start, seg_end, df_save_all, used_pairs, nframes_each
+        print("[INFO] Feature cache schema/config changed; recomputing the cache.")
 
     # --- Compute features because cache missing or force_recompute ---
     X_list = []
@@ -1047,6 +1026,10 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
                 "topology": os.path.abspath(top_path),
                 "stride": stride,
                 "lag": lag,
+                "feature_schema": FEATURE_SCHEMA,
+                "feature_mode": feat_mode,
+                "feature_dimension": int(X_all.shape[1]),
+                "feature_atomselect": internal_cfg.get("atomselect"),
             },
         )
         print(

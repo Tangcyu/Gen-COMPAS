@@ -58,8 +58,13 @@ def get_internal_coordinates(traj, selected_atoms):
 
 def get_minimal_internal_coordinates(traj, selected_atoms):
     """
-    Compute minimal internal coordinates (3N-6 DOF) for selected atoms, with
-    periodic handling of angles and torsions using sin/cos transforms.
+    Compute the canonical RiteWeight/VCN fixed-anchor internal coordinates.
+
+    Distances are in MDTraj's native nanometers and angles/dihedrals are in
+    radians.  For ordered atoms ``a0, a1, ...``, the first three features are
+    ``r(a0,a1)``, ``r(a0,a2)``, and ``angle(a1,a0,a2)``.  Every later atom
+    contributes its distance and angle from the same anchors plus one
+    dihedral, for a total of 3N-6 features.
 
     Parameters:
     - traj: mdtraj.Trajectory
@@ -69,51 +74,49 @@ def get_minimal_internal_coordinates(traj, selected_atoms):
     - labels: list of coordinate labels
     - values: np.ndarray of shape (n_frames, 3N-6)
     """
-    labels = []
-    values = []
     selected_atoms = [i - 1 for i in selected_atoms]  # convert to 0-based
     num_atoms = len(selected_atoms)
 
-    if num_atoms < 2:
-        raise ValueError("Must select at least 2 atoms to compute internal coordinates.")
+    if num_atoms < 4:
+        raise ValueError("Must select at least 4 atoms for RiteWeight features.")
 
-    # 1. Bond lengths
-    bonds = [(selected_atoms[i], selected_atoms[i + 1]) for i in range(num_atoms - 1)]
-    bond_labels = [f"Bond_{a+1}-{b+1}" for a, b in bonds]
-    bond_values = md.compute_distances(traj, bonds) * 10  # nm -> A
-    labels.extend(bond_labels)
-    values.append(bond_values)
+    a0, a1, a2 = selected_atoms[:3]
+    later_atoms = selected_atoms[3:]
 
-    # 2. Bond angles (converted to sin/cos)
-    angles = [(selected_atoms[i], selected_atoms[i + 1], selected_atoms[i + 2]) for i in range(num_atoms - 2)]
-    angle_labels = [f"Angle_{a+1}-{b+1}-{c+1}_cos" for a, b, c in angles] + \
-                   [f"Angle_{a+1}-{b+1}-{c+1}_sin" for a, b, c in angles]
-    angle_radians = md.compute_angles(traj, angles)
-    angle_cos = np.cos(angle_radians)
-    angle_sin = np.sin(angle_radians)
-    labels.extend(angle_labels)
-    values.append(angle_cos)
-    values.append(angle_sin)
+    distances = [(a0, a1), (a0, a2)] + [(a0, atom) for atom in later_atoms]
+    angles = [(a1, a0, a2)] + [(a1, a0, atom) for atom in later_atoms]
+    dihedrals = [(a2, a1, a0, atom) for atom in later_atoms]
 
-    # 3. Dihedrals (converted to sin/cos)
-    dihedrals = [(selected_atoms[i], selected_atoms[i + 1], selected_atoms[i + 2], selected_atoms[i + 3])
-                 for i in range(num_atoms - 3)]
-    dihedral_labels = [f"Dihedral_{a+1}-{b+1}-{c+1}-{d+1}_cos" for a, b, c, d in dihedrals] + \
-                      [f"Dihedral_{a+1}-{b+1}-{c+1}-{d+1}_sin" for a, b, c, d in dihedrals]
-    dihedral_radians = md.compute_dihedrals(traj, dihedrals)
-    dihedral_cos = np.cos(dihedral_radians)
-    dihedral_sin = np.sin(dihedral_radians)
-    labels.extend(dihedral_labels)
-    values.append(dihedral_cos)
-    values.append(dihedral_sin)
+    distance_values = md.compute_distances(traj, distances)
+    angle_values = md.compute_angles(traj, angles)
+    dihedral_values = md.compute_dihedrals(traj, dihedrals)
 
-    # Combine into a single array.
-    values = np.hstack(values) if values else np.empty((traj.n_frames, 0))
+    labels = [
+        f"Distance_{a0+1}-{a1+1}",
+        f"Distance_{a0+1}-{a2+1}",
+        f"Angle_{a1+1}-{a0+1}-{a2+1}",
+    ]
+    labels.extend(f"Distance_{a0+1}-{atom+1}" for atom in later_atoms)
+    labels.extend(f"Angle_{a1+1}-{a0+1}-{atom+1}" for atom in later_atoms)
+    labels.extend(
+        f"Dihedral_{a2+1}-{a1+1}-{a0+1}-{atom+1}" for atom in later_atoms
+    )
 
-    # Corrected degrees of freedom: 1 bond -> 1D, 1 angle -> 2D, 1 torsion -> 2D.
-    dof_expected = (num_atoms - 1) + 2 * (num_atoms - 2) + 2 * (num_atoms - 3)  # 3N - 6
+    values = np.concatenate(
+        [
+            distance_values[:, [0]],
+            distance_values[:, [1]],
+            angle_values[:, [0]],
+            distance_values[:, 2:],
+            angle_values[:, 1:],
+            dihedral_values,
+        ],
+        axis=1,
+    )
+
+    dof_expected = 3 * num_atoms - 6
     if values.shape[1] != dof_expected:
-        raise ValueError(f"Expected {dof_expected} DOF but got {values.shape[1]}.")
+        raise ValueError(f"Expected {dof_expected} features but got {values.shape[1]}.")
 
     return labels, values
 

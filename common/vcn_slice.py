@@ -13,6 +13,7 @@ from vcn.zmatrix import (
     get_minimal_internal_coordinates,
     get_pair_distances,
 )
+from common.feature_contract import validate_riteweight_vcn_featurization
 
 
 # =========================================================
@@ -135,11 +136,14 @@ def perform_kmeans_clustering(points, out_dir):
 
 
 # =========================================================
-# === Main analysis ===
+# === Main slicing ===
 # =========================================================
 
-def run_committor_analysis(config):
-   
+def run_committor_slice(config, riteweight_config=None):
+    """Slice generated frames using a consistently featurized VCN model."""
+
+    if riteweight_config is not None:
+        validate_riteweight_vcn_featurization(config, riteweight_config)
 
     label = config.get("label", "default_label")
     model_fn = config["model_fn"]
@@ -200,7 +204,7 @@ def run_committor_analysis(config):
         plot_committor_pairs(traj, q_values, cvs_to_plot, out_dir, prefix="all")
         plot_committor_pairs(sliced_points, q_values[mask], cvs_to_plot, out_dir, prefix="sliced")
 
-    print("Committor analysis completed successfully.")
+    print("Committor slicing completed successfully.")
 
 
 # =========================================================
@@ -209,8 +213,8 @@ def run_committor_analysis(config):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Train VCN model with config file")
+    parser = argparse.ArgumentParser(description="Slice generated frames with a VCN model")
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     args = parser.parse_args()
     config = load_yaml_config(args.config)
-    run_committor_analysis(config["VCN"])
+    run_committor_slice(config["VCN"], config.get("RiteWeight"))

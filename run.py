@@ -14,7 +14,7 @@ def build_parser():
         required=True,
         help=(
             'Step to run: "train_diffusion", "sample_diffusion", '
-            '"train_committor", "committor_analysis", "clustering", '
+            '"train_committor", "committor_slice", "clustering", '
             '"occupancy", "riteweight", "fel_estimate"'
         ),
     )
@@ -43,10 +43,10 @@ def main(argv=None):
         run_diffusion_inference(config["Generative"])
     elif args.step == "train_committor":
         from common.vcn_train import train_committor_model
-        train_committor_model(config["VCN"])
-    elif args.step == "committor_analysis":
-        from common.vcn_slice import run_committor_analysis
-        run_committor_analysis(config["VCN"])
+        train_committor_model(config["VCN"], config["RiteWeight"])
+    elif args.step == "committor_slice":
+        from common.vcn_slice import run_committor_slice
+        run_committor_slice(config["VCN"], config["RiteWeight"])
     elif args.step == "clustering":
         from tools.clustering import run_clustering
         run_clustering(config["Clustering"])
@@ -75,7 +75,7 @@ def main(argv=None):
         raise ValueError(
             f"Unknown step: {args.step}. Choose from "
             "'train_diffusion', 'sample_diffusion', 'train_committor', "
-            "'committor_analysis', 'clustering', 'occupancy', 'riteweight', "
+            "'committor_slice', 'clustering', 'occupancy', 'riteweight', "
             "'fel_estimate'."
         )
 

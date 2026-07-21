@@ -54,9 +54,9 @@ For computing statistical weights and estimating free energy landscapes, please 
 <td>Train a Variational Committor Network (VCN) to predict committor probabilities from MD data.</td>
 </tr>
 <tr>
-<td><code>committor_analysis</code></td>
-<td><code>run_committor_analysis()</code></td>
-<td>Perform committor-based slicing and analysis on generated structures.</td>
+<td><code>committor_slice</code></td>
+<td><code>run_committor_slice()</code></td>
+<td>Slice generated structures around the committor transition region.</td>
 </tr>
 <tr>
 <td><code>clustering</code></td>
@@ -94,12 +94,14 @@ For computing statistical weights and estimating free energy landscapes, please 
 python run.py --step fel_estimate --config config.yaml
 </code></pre>
 
+<p>VCN training and committor slicing use the same fixed-anchor internal-coordinate implementation as RiteWeight. The workflow validates the atom selection and feature settings before either VCN step runs.</p>
+
 <p><strong>Available <code>&lt;STEP_NAME&gt;</code> options:</strong></p>
 <ul>
 <li><code>train_diffusion</code></li>
 <li><code>sample_diffusion</code></li>
 <li><code>train_committor</code></li>
-<li><code>committor_analysis</code></li>
+<li><code>committor_slice</code></li>
 <li><code>clustering</code></li>
 <li><code>occupancy</code></li>
 <li><code>riteweight</code></li>

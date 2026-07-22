@@ -450,7 +450,14 @@ python helper/config_helper.py
 
 <p>The GUI can load an existing minimal or complete YAML, edit each top-level workflow section, browse for required files and directories, validate essential inputs, preview the result, and save a fully expanded YAML. Lists and sparse iteration overrides are entered using standard YAML syntax. Tkinter is required; verify that it is available with <code>python -m tkinter</code>.</p>
 
-<p>For high-DPI displays, increase the interface scaling with <code>gen-compas-config --ui-scale 1.25</code>. Nested groups are collapsed and created only when opened to reduce latency, particularly over remote desktop or X11 forwarding.</p>
+<p>The helper uses device-pixel-aligned named fonts and automatic display-DPI detection. If the operating-system scaling is still too small, apply an additional multiplier with <code>gen-compas-config --ui-scale 1.25</code>. Nested groups are collapsed and created only when opened to reduce latency, particularly over remote desktop or X11 forwarding.</p>
+
+<p>On Linux, anti-aliased high-resolution text requires an Xft-enabled Tk build. Check the exact Python interpreter that will launch or build the helper:</p>
+
+<pre><code>python -c 'import tkinter as tk; r=tk.Tk(); print(r.tk.call("tk::pkgconfig", "get", "fontsystem")); r.destroy()'
+</code></pre>
+
+<p>The expected result on Linux is <code>xft</code>. A result such as <code>x11</code>, <code>unknown</code>, or a Tk library marked <code>no-xft</code> uses legacy X11 font rendering and cannot be made anti-aliased by increasing the font size. Install an Xft-enabled Python/Tk build first. The helper displays a startup warning when it detects this condition.</p>
 
 <p>The helper also supports headless generation and validation:</p>
 
@@ -458,7 +465,7 @@ python helper/config_helper.py
 gen-compas-config --config complete.workflow.yaml --validate-only
 </code></pre>
 
-<p>A standalone, fast-starting application directory can be built with PyInstaller. The <code>onedir</code> format is intentional because it starts faster than a single-file bundle:</p>
+<p>A standalone, fast-starting application directory can be built with PyInstaller. Run the Xft check above with the same <code>python</code> command used below: PyInstaller bundles that interpreter's Tk library. The <code>onedir</code> format is intentional because it starts faster than a single-file bundle:</p>
 
 <pre><code>python -m pip install '.[gui-build]'
 python -m PyInstaller --clean --noconfirm \

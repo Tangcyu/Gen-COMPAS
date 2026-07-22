@@ -5,9 +5,11 @@ import yaml
 
 from helper.config_helper import (
     complete_config,
+    get_tk_font_backend,
     load_complete_config,
     parse_field_value,
     save_complete_config,
+    scaled_font_pixel_size,
     validate_workflow_config,
 )
 
@@ -97,3 +99,48 @@ def test_legacy_riteweight_top_key_is_migrated():
 
     assert config["RiteWeight"]["io"]["topology"] == "/data/legacy.psf"
     assert "top" not in config["RiteWeight"]["io"]
+
+
+@pytest.mark.parametrize(
+    ("points", "tk_scaling", "ui_scale", "pixel_size"),
+    [
+        (12, 1.0, 1.0, -12),
+        (13, 4 / 3, 1.0, -17),
+        (13, 4 / 3, 1.25, -22),
+        (10, 2.0, 1.0, -20),
+    ],
+)
+def test_scaled_font_pixel_size_returns_exact_device_pixels(
+    points, tk_scaling, ui_scale, pixel_size
+):
+    assert scaled_font_pixel_size(points, tk_scaling, ui_scale) == pixel_size
+
+
+def test_scaled_font_pixel_size_rejects_invalid_values():
+    with pytest.raises(ValueError):
+        scaled_font_pixel_size(12, 0, 1)
+
+
+def test_get_tk_font_backend_reports_xft():
+    class TclInterpreter:
+        @staticmethod
+        def call(*args):
+            assert args == ("tk::pkgconfig", "get", "fontsystem")
+            return "xft"
+
+    class Root:
+        tk = TclInterpreter()
+
+    assert get_tk_font_backend(Root()) == "xft"
+
+
+def test_get_tk_font_backend_handles_unsupported_query():
+    class TclInterpreter:
+        @staticmethod
+        def call(*_args):
+            raise RuntimeError("unsupported")
+
+    class Root:
+        tk = TclInterpreter()
+
+    assert get_tk_font_backend(Root()) == "unknown"

@@ -284,6 +284,46 @@ def validate_workflow_config(config: Mapping[str, Any]) -> list[str]:
     return errors
 
 
+def scaled_font_pixel_size(
+    point_size: float,
+    tk_scaling: float,
+    ui_scale: float = 1.0,
+) -> int:
+    """Return a Tk pixel font size at the requested physical scale.
+
+    Tk treats positive sizes as points and converts them through a floating-point
+    scaling factor.  Supplying a negative size requests an exact number of device
+    pixels, which avoids a second, widget-specific rounding pass at fractional DPI
+    scales such as 125% and 150%.
+    """
+    if point_size <= 0 or tk_scaling <= 0 or ui_scale <= 0:
+        raise ValueError("Font size and scaling values must be greater than zero.")
+    return -max(1, round(point_size * tk_scaling * ui_scale))
+
+
+def get_tk_font_backend(root: Any) -> str:
+    """Return Tk's active font renderer (normally ``xft`` on modern Linux)."""
+    try:
+        return str(root.tk.call("tk::pkgconfig", "get", "fontsystem")).lower()
+    except Exception:  # pragma: no cover - depends on the installed Tk build
+        return "unknown"
+
+
+def enable_native_dpi_awareness() -> None:
+    """Enable native high-DPI rendering before Tk creates a Windows surface."""
+    if sys.platform != "win32":
+        return
+    try:  # Windows 8.1 and newer: per-monitor DPI awareness.
+        import ctypes
+
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):  # pragma: no cover - Windows version specific
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+
+
 def launch_gui(
     initial_config: Mapping[str, Any],
     source_path: str | None = None,
@@ -392,25 +432,81 @@ def launch_gui(
             self._logo_error = None
             self.status = tk.StringVar(value="Ready")
             self.root.title("Gen-COMPAS Configuration Helper")
-            self.root.geometry("1240x860")
-            self.root.minsize(960, 640)
             current_scaling = float(self.root.tk.call("tk", "scaling"))
-            self.root.tk.call("tk", "scaling", max(0.8, current_scaling * ui_scale))
+            self.tk_scaling = max(0.8, current_scaling)
+            self.ui_scale = ui_scale
+            self.effective_scaling = self.tk_scaling * self.ui_scale
+            self.root.tk.call("tk", "scaling", self.effective_scaling)
+            # Window geometry uses pixels rather than points.  Scale it relative to
+            # Tk's conventional 96-DPI baseline (96 / 72 pixels per point).
+            self.layout_scale = max(0.8, self.effective_scaling / (96.0 / 72.0))
+            self.root.geometry(
+                f"{round(1240 * self.layout_scale)}x{round(860 * self.layout_scale)}"
+            )
+            self.root.minsize(
+                round(960 * self.layout_scale), round(640 * self.layout_scale)
+            )
+            self.font_backend = get_tk_font_backend(self.root)
             self._configure_styles()
             self._build_shell()
             self._rebuild_navigation()
             self._show_section(next(iter(self.config)), store_current=False)
+            if sys.platform.startswith("linux") and self.font_backend != "xft":
+                self._show_font_backend_warning()
+
+        def _font_size(self, points):
+            return scaled_font_pixel_size(points, self.tk_scaling, self.ui_scale)
+
+        def _named_font(self, name, points, *, family=None, weight="normal"):
+            return tkfont.Font(
+                root=self.root,
+                name=name,
+                family=family or self.font_family,
+                size=self._font_size(points),
+                weight=weight,
+            )
 
         def _configure_styles(self):
             style = ttk.Style(self.root)
             if "clam" in style.theme_names():
                 style.theme_use("clam")
-            tkfont.nametofont("TkDefaultFont").configure(size=13)
-            tkfont.nametofont("TkTextFont").configure(size=13)
-            tkfont.nametofont("TkMenuFont").configure(size=12)
-            tkfont.nametofont("TkHeadingFont").configure(size=13)
-            tkfont.nametofont("TkFixedFont").configure(size=12)
-            self.font_family = tkfont.nametofont("TkDefaultFont").cget("family")
+            default_font = tkfont.nametofont("TkDefaultFont", root=self.root)
+            self.font_family = default_font.cget("family")
+            fixed_family = tkfont.nametofont(
+                "TkFixedFont", root=self.root
+            ).cget("family")
+            default_font.configure(size=self._font_size(13))
+            tkfont.nametofont("TkTextFont", root=self.root).configure(
+                size=self._font_size(13)
+            )
+            tkfont.nametofont("TkMenuFont", root=self.root).configure(
+                size=self._font_size(12)
+            )
+            tkfont.nametofont("TkHeadingFont", root=self.root).configure(
+                size=self._font_size(13), weight="bold"
+            )
+            tkfont.nametofont("TkFixedFont", root=self.root).configure(
+                size=self._font_size(12)
+            )
+            self.fonts = {
+                "section": self._named_font(
+                    "GenCompasSectionFont", 20, weight="bold"
+                ),
+                "group": self._named_font("GenCompasGroupFont", 13, weight="bold"),
+                "help": self._named_font("GenCompasHelpFont", 10),
+                "help_bold": self._named_font(
+                    "GenCompasHelpBoldFont", 10, weight="bold"
+                ),
+                "button": self._named_font("GenCompasButtonFont", 11),
+                "button_bold": self._named_font(
+                    "GenCompasButtonBoldFont", 11, weight="bold"
+                ),
+                "hero": self._named_font("GenCompasHeroFont", 23, weight="bold"),
+                "subtitle": self._named_font("GenCompasSubtitleFont", 12),
+                "fixed": self._named_font(
+                    "GenCompasFixedFont", 12, family=fixed_family
+                ),
+            }
             self.root.option_add("*Font", "TkDefaultFont")
             self.root.configure(background="#f3f5f7")
             style.configure("TFrame", background="#f3f5f7")
@@ -421,28 +517,28 @@ def launch_gui(
                 "SectionTitle.TLabel",
                 background="#ffffff",
                 foreground="#12344d",
-                font=(self.font_family, 20, "bold"),
+                font=self.fonts["section"],
             )
             style.configure(
                 "GroupTitle.TLabel",
                 background="#ffffff",
                 foreground="#176b87",
-                font=(self.font_family, 13, "bold"),
+                font=self.fonts["group"],
                 padding=(0, 10, 0, 4),
             )
             style.configure(
                 "Help.TLabel",
                 background="#ffffff",
                 foreground="#607d8b",
-                font=(self.font_family, 10),
+                font=self.fonts["help"],
             )
-            style.configure("TButton", padding=(13, 8), font=(self.font_family, 11))
+            style.configure("TButton", padding=(13, 8), font=self.fonts["button"])
             style.configure(
                 "Accent.TButton",
                 background="#176b87",
                 foreground="#ffffff",
                 padding=(16, 8),
-                font=(self.font_family, 11, "bold"),
+                font=self.fonts["button_bold"],
             )
             style.map(
                 "Accent.TButton",
@@ -451,6 +547,18 @@ def launch_gui(
             style.configure("TEntry", padding=6)
             style.configure("TCombobox", padding=5)
             style.configure("TCheckbutton", background="#ffffff")
+
+        def _show_font_backend_warning(self):
+            message = (
+                f"Tk font backend: {self.font_backend}. Anti-aliased high-resolution "
+                "fonts on Linux require an Xft-enabled Tk build. Run this helper "
+                "with a Python/Tk installation linked to libXft, then rebuild the "
+                "standalone application with that same Python."
+            )
+            self.status.set(message)
+            self.root.after_idle(
+                lambda: messagebox.showwarning("Low-resolution Tk fonts", message)
+            )
 
         def _build_shell(self):
             header = tk.Frame(self.root, background="#ffffff", padx=18, pady=10)
@@ -464,14 +572,14 @@ def launch_gui(
                 text="Gen-COMPAS",
                 background="#ffffff",
                 foreground="#12344d",
-                font=(self.font_family, 23, "bold"),
+                font=self.fonts["hero"],
             ).pack(anchor="w", pady=(12, 0))
             tk.Label(
                 title_block,
                 text="Workflow Configuration Helper",
                 background="#ffffff",
                 foreground="#607d8b",
-                font=(self.font_family, 12),
+                font=self.fonts["subtitle"],
             ).pack(anchor="w")
             self.root.after_idle(self._load_logo)
 
@@ -526,7 +634,13 @@ def launch_gui(
                 try:
                     with Image.open(LOGO_PATH) as image:
                         prepared = image.convert("RGBA")
-                        prepared.thumbnail((170, 125), Image.Resampling.LANCZOS)
+                        prepared.thumbnail(
+                            (
+                                round(170 * self.layout_scale),
+                                round(125 * self.layout_scale),
+                            ),
+                            Image.Resampling.LANCZOS,
+                        )
                         self._prepared_logo = prepared.copy()
                 except (OSError, ValueError) as exc:
                     self._logo_error = str(exc)
@@ -555,7 +669,7 @@ def launch_gui(
                 anchor="w",
                 background="#e8edf1",
                 foreground="#607d8b",
-                font=(self.font_family, 10, "bold"),
+                font=self.fonts["help_bold"],
                 padx=10,
                 pady=8,
             ).pack(fill="x")
@@ -573,7 +687,7 @@ def launch_gui(
                     background="#e8edf1",
                     activebackground="#d5e4ea",
                     foreground="#263238",
-                    font=(self.font_family, 11),
+                    font=self.fonts["button"],
                     cursor="hand2",
                 )
                 button.pack(fill="x", pady=1)
@@ -604,7 +718,11 @@ def launch_gui(
                 button.configure(
                     background="#ffffff" if selected else "#e8edf1",
                     foreground="#176b87" if selected else "#263238",
-                    font=(self.font_family, 11, "bold" if selected else "normal"),
+                    font=(
+                        self.fonts["button_bold"]
+                        if selected
+                        else self.fonts["button"]
+                    ),
                 )
 
             heading = ttk.Frame(self.form_host, padding=(20, 16, 20, 8), style="Card.TFrame")
@@ -659,7 +777,7 @@ def launch_gui(
                         background="#ffffff",
                         activebackground="#eef5f7",
                         foreground="#176b87",
-                        font=(self.font_family, 13, "bold"),
+                        font=self.fonts["group"],
                         padx=2,
                         pady=8,
                         cursor="hand2",
@@ -724,7 +842,7 @@ def launch_gui(
                     wrap="none",
                     relief="solid",
                     borderwidth=1,
-                    font="TkFixedFont",
+                    font=self.fonts["fixed"],
                     padx=7,
                     pady=6,
                 )
@@ -897,6 +1015,7 @@ def launch_gui(
             self.status.set(f"Saved complete YAML to {self.current_path}")
             messagebox.showinfo("YAML saved", str(self.current_path))
 
+    enable_native_dpi_awareness()
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - requires a headless runtime

@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 from MDAnalysis import Universe
 from MDAnalysis.coordinates.DCD import DCDWriter
 from MDAnalysis.lib.distances import calc_bonds, calc_angles, calc_dihedrals
@@ -53,28 +54,21 @@ def internal_coords_min_zmatrix(positions: np.ndarray, bonds, angles, diheds):
       - angles (radians)
       - dihedrals (radians, in [-pi, pi])
     """
-    # Bonds
     b = calc_bonds(
         positions[bonds[:, 0]],
         positions[bonds[:, 1]],
     )
-
-    # Angles
     a = calc_angles(
         positions[angles[:, 0]],
         positions[angles[:, 1]],
         positions[angles[:, 2]],
     )
-
-    # Dihedrals
     d = calc_dihedrals(
         positions[diheds[:, 0]],
         positions[diheds[:, 1]],
         positions[diheds[:, 2]],
         positions[diheds[:, 3]],
     )
-
-    # Concatenate to a single feature vector (3N-6)
     return np.concatenate([b, a, d], axis=0)
 
 
@@ -102,22 +96,60 @@ def read_colvars(colvars_path, index_mismatch=True, skip_rows=1):
     return headers, data
 
 
-def determine_AB_functor(basin_A, basin_B, basin_size):
-    """Create a function to classify a CV point as 'A', 'B', or 'M'."""
-    basin_A, basin_B = np.array(basin_A), np.array(basin_B)
-    basin_size = np.full_like(basin_A, basin_size, dtype=float) if np.isscalar(basin_size) else np.array(basin_size)
+def kmeans_metastable_labeling(X, n_clusters, quantile=0.9, random_state=0):
+    """
+    KMeans clustering + distance-based 'intermediate' filtering.
 
-    def in_basin(cvs, center):
-        return np.all(np.abs(np.array(cvs) - center) <= basin_size)
+    Returns:
+      state_id: shape (n_frames,), in {0..n_clusters-1, -1}
+      kmeans: fitted KMeans object
+      dist_to_centroid: shape (n_frames,)
+      cluster_thresholds: shape (n_clusters,), per-cluster distance cutoff
+    """
+    if X.ndim != 2:
+        raise ValueError("X must be 2D array for KMeans.")
+    if len(X) < n_clusters:
+        raise ValueError(f"Not enough samples ({len(X)}) for n_clusters={n_clusters}.")
 
-    def determine_AB(cvs):
-        if in_basin(cvs, basin_A):
-            return "A"
-        elif in_basin(cvs, basin_B):
-            return "B"
-        return "M"
+    kmeans = KMeans(n_clusters=n_clusters, n_init="auto", random_state=random_state)
+    labels = kmeans.fit_predict(X)
 
-    return determine_AB
+    centers = kmeans.cluster_centers_
+    dists = np.linalg.norm(X - centers[labels], axis=1)
+
+    thresholds = np.zeros(n_clusters, dtype=float)
+    for c in range(n_clusters):
+        mask = labels == c
+        if np.any(mask):
+            thresholds[c] = np.quantile(dists[mask], quantile)
+        else:
+            thresholds[c] = np.inf
+
+    # intermediate if too far from its assigned centroid
+    state_id = labels.copy()
+    too_far = dists > thresholds[labels]
+    state_id[too_far] = -1
+
+    return state_id, kmeans, dists, thresholds
+
+
+def add_pairwise_committor_columns(df, state_col, n_states, prefix="q"):
+    """
+    Add C(N,2) pairwise labels for committor-vector training.
+    For each pair (i,j), create a column:
+      state==i -> 0
+      state==j -> 1
+      else     -> -1
+    """
+    states = df[state_col].to_numpy()
+    for i in range(n_states):
+        for j in range(i + 1, n_states):
+            col = f"{prefix}_{i}_{j}"
+            arr = np.full_like(states, -1, dtype=np.int32)
+            arr[states == i] = 0
+            arr[states == j] = 1
+            df[col] = arr
+    return df
 
 
 # =========================================================
@@ -147,14 +179,21 @@ def run_reweighting(config):
     index_mismatch = config.get("colvars_mismatch", True)
     relabel = config.get("Relabel", False)
     periodic = config.get("periodic", False)
-    k = config.get("k_prefactor", 1.0)
     beta = 1 / (kB * temperature)
 
-    cvs0 = config["cvs_to_label"]
-    basin_A, basin_B = np.array(config["basin_A"]), np.array(config["basin_B"])
-    basin_size = config["basin_size"]
+    # --- Meta-stable state (KMeans) config ---
+    n_states = int(config.get("n_states", 4))
+    kmeans_space = config.get("kmeans_space", "descriptor")  # "descriptor" or "cvs"
+    cvs_to_cluster = config.get("cvs_to_cluster", [])         # used if kmeans_space == "cvs"
+    inter_quantile = float(config.get("intermediate_quantile", 0.9))
+    kmeans_random_state = int(config.get("kmeans_random_state", 0))
 
-    determine_AB = determine_AB_functor(basin_A, basin_B, basin_size)
+    # --- Pairwise committor-vector columns ---
+    make_pairwise = bool(config.get("make_pairwise_committor", True))
+    pairwise_prefix = config.get("pairwise_prefix", "q")
+
+    # --- CVs for saving (and optional periodic encoding) ---
+    cvs0 = config.get("cvs_to_save", config.get("cvs_to_label", []))  # backward compatible
 
     # --- Find DCD files ---
     dcd_files = sorted([
@@ -164,17 +203,40 @@ def run_reweighting(config):
     ])
 
     if relabel:
-        # --- Re-label existing weights file ---
+        # --- Re-label existing weights file using existing columns ---
         df = pd.read_csv(weight_csv)
-        positions = df[cvs0].to_numpy()
-        df["state"] = np.apply_along_axis(determine_AB, 1, positions)
 
-        df["label"] = df["state"].map({"A": 0, "B": 1, "M": -1})
-        df["center"] = df["state"].map({"A": 0.0, "B": 1.0, "M": -1})
-        df["Ka"] = np.where(df["state"] == "A", k, 0.0)
-        df["Kb"] = np.where(df["state"] == "B", k, 0.0)
+        if kmeans_space == "descriptor":
+            # relabel mode can't rebuild descriptors unless you store them.
+            # So we require columns exist in CSV, e.g. PC1/PC2 saved earlier.
+            pc_cols = config.get("descriptor_cols", ["PC1", "PC2"])
+            if not all(c in df.columns for c in pc_cols):
+                raise ValueError(
+                    f"Relabel with kmeans_space='descriptor' requires descriptor_cols {pc_cols} in CSV."
+                )
+            X_cluster = df[pc_cols].to_numpy()
+        elif kmeans_space == "cvs":
+            if not cvs_to_cluster:
+                raise ValueError("Relabel with kmeans_space='cvs' requires cvs_to_cluster in config.")
+            if not all(c in df.columns for c in cvs_to_cluster):
+                raise ValueError("Some cvs_to_cluster not found in CSV.")
+            X_cluster = df[cvs_to_cluster].to_numpy()
+        else:
+            raise ValueError("kmeans_space must be 'descriptor' or 'cvs'.")
+
+        state_id, kmeans, dists, thresholds = kmeans_metastable_labeling(
+            X_cluster, n_clusters=n_states, quantile=inter_quantile, random_state=kmeans_random_state
+        )
+        df["meta_state"] = state_id
+        df["is_intermediate"] = (df["meta_state"] == -1).astype(int)
+        df["dist_to_centroid"] = dists
+
+        # Optional pairwise labels
+        if make_pairwise:
+            df = add_pairwise_committor_columns(df, "meta_state", n_states, prefix=pairwise_prefix)
+
         df.to_csv(weight_csv, index=False)
-        print(f"Re-labeled and updated {weight_csv}")
+        print(f"Re-labeled (KMeans) and updated {weight_csv}")
         return
 
     # --- Full reweighting mode ---
@@ -192,15 +254,15 @@ def run_reweighting(config):
         sel_weights = u.select_atoms(selection_weights)
         sel_output = u.select_atoms(selection_output)
 
-        # ---- NEW: build minimal Z-matrix indices once per trajectory ----
+        # build minimal Z-matrix indices once per trajectory
         n_atoms = sel_weights.n_atoms
         bonds, angles, diheds = build_min_zmatrix_indices(n_atoms)
 
-        # ---- NEW: compute (3N-6) internal-coordinate features per frame ----
+        # compute (3N-6) internal-coordinate features per frame
         features = []
         for ts in u.trajectory[::every]:
             z = internal_coords_min_zmatrix(sel_weights.positions, bonds, angles, diheds)
-            features.append(z.astype(np.float32))  # float32 helps memory
+            features.append(z.astype(np.float32))
         features = np.asarray(features, dtype=np.float32)
 
         all_universes.append(sel_output.universe)
@@ -214,11 +276,14 @@ def run_reweighting(config):
             raise ValueError(f"Frame mismatch: {dcd_path}")
         all_colvars.append(colvars_data)
 
+    if len(all_descriptors) == 0:
+        raise RuntimeError("No valid trajectories found. Check match / dcd_folder / colvars.")
+
     # Stack data
     descriptor_all = np.vstack(all_descriptors)
     colvars_all = np.vstack(all_colvars)
 
-    # --- Compute ΔF ---
+    # --- Compute ΔF in descriptor space (same as before) ---
     desc_init = np.vstack([d[: int(split * len(d))] for d in all_descriptors])
     desc_final = np.vstack([d[-int(split * len(d)) :] for d in all_descriptors])
 
@@ -231,9 +296,9 @@ def run_reweighting(config):
         deltaF = -kB * temperature * np.log(H_final / (H_init + 1e-10))
         deltaF -= np.nanmin(deltaF[np.isfinite(deltaF)])
 
-    X, Y = np.meshgrid(0.5 * (xbins[:-1] + xbins[1:]), 0.5 * (ybins[:-1] + ybins[1:]))
+    Xg, Yg = np.meshgrid(0.5 * (xbins[:-1] + xbins[1:]), 0.5 * (ybins[:-1] + ybins[1:]))
     plt.figure(figsize=(6, 5))
-    plt.contourf(X, Y, deltaF.T, levels=20, cmap="viridis")
+    plt.contourf(Xg, Yg, deltaF.T, levels=20, cmap="viridis")
     plt.colorbar(label="ΔF (kcal/mol)")
     plt.xlabel("PC1")
     plt.ylabel("PC2")
@@ -241,7 +306,7 @@ def run_reweighting(config):
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "deltaF_pca.png"))
 
-    # --- Compute weights ---
+    # --- Compute weights (same as before) ---
     weights = []
     for frame_descriptor in descriptor_all:
         x, y = frame_descriptor
@@ -254,27 +319,57 @@ def run_reweighting(config):
             weight = 0.0
         weights.append(weight)
 
-    weights = np.array(weights)
-    weights /= np.sum(weights)
+    weights = np.array(weights, dtype=float)
+    s = np.sum(weights)
+    if s <= 0:
+        raise RuntimeError("All weights are zero. Check deltaF binning / projection.")
+    weights /= s
 
     # --- Save weights + CVs ---
     df = pd.DataFrame(colvars_all, columns=headers)
     df.insert(0, "frame", np.arange(len(weights)))
     df["weight"] = weights
 
-    if periodic:
-        for cv in cvs0:
-            df[f"s{cv}"] = np.sin(df[cv] * np.pi / 180.0)
-            df[f"c{cv}"] = np.cos(df[cv] * np.pi / 180.0)
+    # Save descriptor columns for later relabeling / debugging
+    if descriptor_all.shape[1] >= 2:
+        df["PC1"] = descriptor_all[:, 0]
+        df["PC2"] = descriptor_all[:, 1]
+    else:
+        df["PC1"] = descriptor_all[:, 0]
 
-    positions = df[cvs0].to_numpy()
-    df["state"] = np.apply_along_axis(determine_AB, 1, positions)
-    df["label"] = df["state"].map({"A": 0, "B": 1, "M": -1})
-    df["center"] = df["state"].map({"A": 0.0, "B": 1.0, "M": -1})
-    df["Ka"] = np.where(df["state"] == "A", k, 0.0)
-    df["Kb"] = np.where(df["state"] == "B", k, 0.0)
+    # periodic encoding if you need it downstream
+    if periodic and cvs0:
+        for cv in cvs0:
+            if cv in df.columns:
+                df[f"s{cv}"] = np.sin(df[cv] * np.pi / 180.0)
+                df[f"c{cv}"] = np.cos(df[cv] * np.pi / 180.0)
+
+    # --- KMeans meta-stable labeling ---
+    if kmeans_space == "descriptor":
+        X_cluster = descriptor_all
+    elif kmeans_space == "cvs":
+        if not cvs_to_cluster:
+            raise ValueError("kmeans_space='cvs' requires cvs_to_cluster in config.")
+        missing = [c for c in cvs_to_cluster if c not in df.columns]
+        if missing:
+            raise ValueError(f"cvs_to_cluster columns missing in colvars: {missing}")
+        X_cluster = df[cvs_to_cluster].to_numpy()
+    else:
+        raise ValueError("kmeans_space must be 'descriptor' or 'cvs'.")
+
+    meta_state, kmeans, dists, thresholds = kmeans_metastable_labeling(
+        X_cluster, n_clusters=n_states, quantile=inter_quantile, random_state=kmeans_random_state
+    )
+    df["meta_state"] = meta_state
+    df["is_intermediate"] = (df["meta_state"] == -1).astype(int)
+    df["dist_to_centroid"] = dists
+
+    # Optional: C(N,2) pairwise labels for committor-vector training
+    if make_pairwise:
+        df = add_pairwise_committor_columns(df, "meta_state", n_states, prefix=pairwise_prefix)
+
     df.to_csv(weight_csv, index=False)
-    print(f"Saved frame weights + CVs to {weight_csv}")
+    print(f"Saved frame weights + meta-state labels to {weight_csv}")
 
     # --- Write DCD and PSF for output selection ---
     sel_output = all_universes[0].select_atoms(selection_output)
@@ -284,13 +379,23 @@ def run_reweighting(config):
                 writer.write(u.atoms)
     print(f"Saved concatenated DCD: {output_dcd}")
 
+    # Optional: also save cluster thresholds
+    thr_path = os.path.join(output_dir, "kmeans_thresholds.txt")
+    with open(thr_path, "w") as f:
+        f.write(f"n_states={n_states}\n")
+        f.write(f"intermediate_quantile={inter_quantile}\n")
+        f.write("thresholds (per cluster):\n")
+        for i, t in enumerate(thresholds):
+            f.write(f"{i} {t}\n")
+    print(f"Saved KMeans thresholds: {thr_path}")
+
 
 # =========================================================
 # === Entry Point ===
 # =========================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Reweighting and free energy reconstruction")
+    parser = argparse.ArgumentParser(description="Reweighting + KMeans metastable labeling + pairwise committor labels")
     parser.add_argument("--config", required=True, help="Path to YAML config")
     args = parser.parse_args()
 

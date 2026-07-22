@@ -1,0 +1,214 @@
+# Full VCN 2.0 configuration.
+# Copy this file and edit paths/CVs before running.
+
+VCN2:
+  # Global seed used for train/validation split and path initial-point sampling.
+  seed: 1234
+
+  # Default device. Section-specific device values override this.
+  device: cuda:0
+
+  output:
+    # All generated files go here.
+    out_dir: ./vcn2_output
+
+    # Save lagged_all/train/val csv.gz files for inspection/reuse.
+    save_lagged_data: false
+
+  data:
+    # Raw trajectory tables. Supported: .csv, .csv.gz.
+    # The raw files should contain all CV columns and optionally:
+    #   weight, step, Ka, Kb, center
+    traj_fns:
+      - ./example_traj.csv.gz
+
+    # CV names in the exact order used by the model.
+    cvs: [cv1, cv2, cv3]
+
+    # Alternative to traj_fns: provide already time-lagged datasets.
+    # If both train_set and val_set are set, traj_fns/time_shift are not used.
+    train_set: null
+    val_set: null
+
+    # Time-lag in frames for VCN training pairs.
+    time_shift: 1
+
+    # Validation fraction when building lagged datasets from raw trajectories.
+    val_ratio: 0.1
+
+    # Optional trajectory thinning and equilibration discard.
+    stride: 1
+    discard_before_step: null
+
+    # Column names.
+    step_column: step
+    weight_column: weight
+
+    # How to combine origin/target statistical weights.
+    # Options: product, sqrt_product, origin
+    weight_mode: product
+
+  normalization:
+    # Critical for high-dimensional distance CVs.
+    # Options: standard, robust, range, none
+    method: standard
+
+    # Prevent division by zero for nearly constant CVs.
+    eps: 1.0e-8
+
+  model:
+    # MLP hidden layer widths.
+    hidden_layers: [128, 128, 64]
+
+    # Options: elu, relu, tanh, gelu
+    activation: elu
+
+    # Clip normalized inputs z to [-input_clip, input_clip].
+    # 0 disables clipping.
+    input_clip: 6.0
+
+    # Dropout applied after hidden activations during training.
+    input_dropout: 0.0
+
+  training:
+    device: cuda:0
+
+    # auto keeps all lagged tensors on the training GPU when they fit.
+    # Use cpu to force CPU pinned-memory batches, or cuda:N to force a GPU.
+    dataset_device: auto
+    gpu_dataset_max_gb: 4.0
+
+    epochs: 500
+    patience: 30
+    learning_rate: 1.0e-4
+
+    # AdamW parameter regularization.
+    weight_decay: 1.0e-5
+
+    # Use explicit batch_size if set. Otherwise len(train)^batch_size_factor.
+    batch_size: null
+    batch_size_factor: 0.6
+    min_batch_size: 65536
+    max_batch_size: null
+    val_batch_size: 262144
+    num_workers: 0
+    pin_memory: true
+
+    # Validate every N epochs. Increase this if validation dominates wall time.
+    validation_interval: 1
+
+    # False avoids moving the model to CPU every time validation improves.
+    # The best TorchScript model is always saved once at the end.
+    save_best_each_improvement: false
+
+  loss:
+    # Soft endpoint restraint scale. Equivalent in spirit to old k/k_scale.
+    endpoint_scale: 100.0
+
+    # Add Gaussian noise in normalized input space during training.
+    # Useful when some distances fluctuate violently.
+    input_noise_std: 0.0
+
+    # Penalize |dq/dz|^2 in normalized space.
+    # Keep small; it is a smoothness regularizer, not a replacement for scaling.
+    gradient_l2_scale: 0.0
+    gradient_l2_max_points: 4096
+
+    # Clip parameter gradients. 0 disables.
+    parameter_grad_clip: 0.0
+
+  trained_model:
+    # Used by path/cluster/analyze. The default matches the train output.
+    path: ./vcn2_output/models/best_model.pt
+
+  path:
+    device: cuda:0
+
+    # Candidate frames are read from data.traj_fns and filtered by q window.
+    candidate_max_points: 200000
+    candidate_stride: 1
+    q_batch_size: 65536
+
+    # Start from q in [initial_q_center - initial_q_window,
+    #                 initial_q_center + initial_q_window].
+    initial_q_center: 0.5
+    initial_q_window: 0.1
+    n_paths: 200
+
+    # Integration in normalized CV space:
+    # z <- z +/- step_size * grad_z / |grad_z|
+    step_size: 0.05
+    max_steps: 300
+    delta_q: 1.0e-3
+    min_grad_norm: 1.0e-8
+
+    # Add angular noise to the normalized gradient direction. 0 disables.
+    stochasticity: 0.0
+
+    # Reparametrized images saved per path.
+    num_images: 64
+
+    # Endpoint forcing is off by default to avoid artificial curvature.
+    append_endpoints: false
+    endpoint_A: null
+    endpoint_B: null
+
+  clustering:
+    device: cuda:0
+    path_dir: ./vcn2_output/paths
+
+    # Hierarchical clustering settings.
+    linkage: average
+    criterion: distance
+    threshold: 0.25
+
+    # GPU batch size for torch.cdist path RMSD matrix.
+    distance_batch_size: 2048
+
+    # Images in saved cluster mean paths.
+    mean_num_images: 64
+
+  analysis:
+    device: cuda:0
+
+    # Sample up to this many raw trajectory points.
+    max_points: 100000
+    stride: 1
+    batch_size: 32768
+
+    # If paths exist, compute integral |grad_z q| ds_z for each path.
+    path_dir: ./vcn2_output/paths
+    path_integral_batch_size: 32768
+
+    # A CV gradient is counted as near-zero when |dq/dz_i| < this.
+    zero_grad_tol: 1.0e-7
+
+    # Warn if one CV carries more than this fraction of RMS gradient.
+    dominance_share_warn: 0.5
+
+    # Warn if q range on sampled frames is narrower than this.
+    q_range_warn: 0.1
+
+  plotting:
+    device: cuda:0
+
+    # Project q onto these selected CVs. No q slicing is performed.
+    # If one CV is given, plot q vs CV. If two or more are given, plot all 2D pairs.
+    cvs: [cv1, cv2]
+
+    # Raw trajectory subsampling for plotting.
+    max_points: 100000
+    stride: 1
+    batch_size: 65536
+
+    # Output and style.
+    out_dir: ./vcn2_output/plots
+    prefix: q_projection
+    figsize: [5.0, 4.2]
+    dpi: 250
+    cmap: viridis
+    vmin: 0.0
+    vmax: 1.0
+    point_size: 4.0
+    alpha: 0.75
+    labels: {}

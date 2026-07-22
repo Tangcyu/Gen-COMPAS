@@ -94,7 +94,8 @@ VCN:
   gendcdfile     : "PATH/TO/GENERATED.dcd"  # DCD file to slice frames from (generated from generative model)
   model_fn       : "PATH/TO/CHECKPOINT"     # Path to trained model file
   slice_dir      : "PATH/TO/Slicing/OUTPUT" # Directory with slicing outputs
-  n_targets      :  20                      # Structural clusters after the fixed 0.4 <= q <= 0.6 slice
+  q_variance     :  0.1                     # Half-width around q=0.5; 0.1 selects 0.4 <= q <= 0.6
+  n_targets      :  20                      # First N frames from the configured q slice (no clustering)
   require_n_targets: true                   # Fail rather than emit fewer targets
 
 Clustering:

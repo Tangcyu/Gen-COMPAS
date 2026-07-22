@@ -14,7 +14,7 @@ It combines <strong>diffusion models</strong> for structure generation with <str
 </p>
 
 <p>
-For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
+For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in:<a href="https://www.pnas.org/doi/10.1073/pnas.2529246123">https://www.pnas.org/doi/10.1073/pnas.2529246123</a> or <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
 </p>
 
 <p>The RiteWeight implementation and its downstream weighted FEL projection are available as stages of <code>workflow.py</code>.</p>
@@ -117,7 +117,7 @@ Iterations 1+:
   -&gt; fel_estimate
 </code></pre>
 
-<p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage first retains generated frames with <code>0.4 &lt;= q &lt;= 0.6</code>, then clusters structural VCN features and selects <code>VCN.n_targets</code> representative frames.</p>
+<p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage retains generated frames within <code>0.5 +/- VCN.q_variance</code>, then selects the first <code>VCN.n_targets</code> candidates in trajectory order without clustering.</p>
 
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
@@ -169,6 +169,7 @@ gen-compas --config workflow.yaml --iteration 1 --rerun_step sample_diffusion
     2: 10
 
 VCN:
+  q_variance: 0.1
   n_targets: 20
   require_n_targets: true
   cvs_to_plot: [CV1, CV2]
@@ -178,6 +179,8 @@ VCN:
 <p><code>minimal.yaml</code> contains only system-specific or non-default values. Defaults live in <code>common/config.py</code>. The initial unbiased DCD and its matching topology are used only for iteration-0 diffusion training; no RiteWeight or Colvars trajectory is required before that training. The normal <code>Unbiased.A.conf</code>/<code>Unbiased.B.conf</code> templates provide the post-TMD trajectories consumed by the first RiteWeight step.</p>
 
 <p><code>Workflow.iteration_noise_scales</code> overrides <code>Generative.inference.noise_scale</code> only for the listed iterations. Likewise, <code>Workflow.iteration_diffusion_epochs</code> overrides <code>Generative.training.epochs</code>; omitted iterations use the Generative fallback values. Set <code>VCN.plot_committor_projections: true</code> only when committor maps on <code>cvs_to_plot</code> should be written during <code>committor_slice</code>.</p>
+
+<p><code>VCN.q_variance</code> sets the half-width of the committor slice around <code>q=0.5</code> and must be between 0 and 0.5. The default <code>0.1</code> selects <code>0.4 &lt;= q &lt;= 0.6</code>. <code>VCN.n_targets</code> is a simple count limit: after this filter, the workflow writes the first N candidate frames in trajectory order. It does not cluster the candidates. With <code>require_n_targets: true</code>, the step fails if fewer than N candidates are available; otherwise, it writes all available candidates.</p>
 
 <h3>Iteration Output Layout</h3>
 

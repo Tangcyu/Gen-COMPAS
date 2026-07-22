@@ -4,8 +4,6 @@ import pandas as pd
 import mdtraj as md
 import yaml
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
-from scipy.spatial.distance import cdist
 import torch
 from vcn.zmatrix import (
     get_internal_coordinates,
@@ -13,10 +11,7 @@ from vcn.zmatrix import (
     get_pair_distances,
 )
 from common.feature_contract import validate_riteweight_vcn_featurization
-
-
-Q_SLICE_MIN = 0.4
-Q_SLICE_MAX = 0.6
+from common.target_selection import committor_slice_bounds, select_slice_targets
 
 
 # =========================================================
@@ -115,54 +110,6 @@ def plot_committor_pairs(traj, q_values, cvs, out_dir, prefix):
 
 
 # =========================================================
-# === Structural clustering after the fixed committor slice ===
-# =========================================================
-
-def select_structural_representatives(
-    candidate_features,
-    candidate_indices,
-    n_targets,
-    *,
-    random_seed,
-    require_n_targets,
-):
-    """Cluster q=0.4--0.6 structures and return one medoid-like frame per cluster.
-
-    KMeans operates on the structural VCN feature vectors. Committor values are
-    used only for the preceding fixed-range filter and are never divided into
-    bins or windows.
-    """
-    candidate_features = np.asarray(candidate_features)
-    candidate_indices = np.asarray(candidate_indices, dtype=int)
-    if len(candidate_features) != len(candidate_indices):
-        raise ValueError("Candidate feature and frame-index counts do not match.")
-    if n_targets < 1:
-        raise ValueError("VCN.n_targets must be at least 1.")
-    if len(candidate_indices) < n_targets:
-        if require_n_targets:
-            raise ValueError(
-                f"Only {len(candidate_indices)} frames lie in the fixed "
-                f"{Q_SLICE_MIN:.1f}--{Q_SLICE_MAX:.1f} committor range; "
-                f"{n_targets} structural targets were required. Generate more samples."
-            )
-        return candidate_indices
-    if len(candidate_indices) == n_targets:
-        return candidate_indices
-
-    kmeans = KMeans(
-        n_clusters=n_targets,
-        random_state=int(random_seed),
-        n_init=10,
-    ).fit(candidate_features)
-    distances = cdist(candidate_features, kmeans.cluster_centers_)
-    local_indices = []
-    for cluster in range(n_targets):
-        members = np.flatnonzero(kmeans.labels_ == cluster)
-        local_indices.append(members[np.argmin(distances[members, cluster])])
-    return candidate_indices[np.asarray(local_indices, dtype=int)]
-
-
-# =========================================================
 # === Main slicing ===
 # =========================================================
 
@@ -193,6 +140,7 @@ def run_committor_slice(config, riteweight_config=None):
     cvs_to_plot = config.get("cvs_to_plot", None)
     plot_projections = committor_projection_plotting_enabled(config)
     periodic = config.get("periodic", False)
+    q_bounds = committor_slice_bounds(config.get("q_variance", 0.1))
     n_targets = int(config.get("n_targets", 20))
     require_n_targets = bool(config.get("require_n_targets", True))
 
@@ -217,12 +165,13 @@ def run_committor_slice(config, riteweight_config=None):
     traj["committor"] = q_values
     committor_path = os.path.join(out_dir, "committor.csv")
     traj.to_csv(committor_path, index=False)
-    # Stage 1: one fixed committor interval. This is not split into sub-windows.
-    mask = (q_values >= Q_SLICE_MIN) & (q_values <= Q_SLICE_MAX)
+    # Stage 1: one configurable interval centered on q=0.5.
+    q_min, q_max = q_bounds
+    mask = (q_values >= q_min) & (q_values <= q_max)
     if not np.any(mask):
         raise ValueError(
-            "No generated frame lies in the fixed committor range "
-            f"[{Q_SLICE_MIN:.1f}, {Q_SLICE_MAX:.1f}]."
+            "No generated frame lies in the configured committor range "
+            f"[{q_min:g}, {q_max:g}]."
         )
 
     candidate_indices = np.flatnonzero(mask)
@@ -231,14 +180,13 @@ def run_committor_slice(config, riteweight_config=None):
         os.path.join(out_dir, "committor_candidates.csv"), index=False
     )
 
-    # Stage 2: cluster structural features from the slice and retain 20 (or the
-    # configured count) representatives. q itself is not a clustering feature.
-    selected_indices = select_structural_representatives(
-        traj_values[mask],
+    # Stage 2: retain the first 20 (or configured count) candidates in trajectory
+    # order. n_targets is only a count limit and does not perform clustering.
+    selected_indices = select_slice_targets(
         candidate_indices,
         n_targets,
-        random_seed=config.get("random_seed", 42),
         require_n_targets=require_n_targets,
+        q_bounds=q_bounds,
     )
 
     sliced_points = traj.iloc[selected_indices].copy()

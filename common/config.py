@@ -87,6 +87,7 @@ DEFAULT_CONFIG = {
         "gendcdfile": None,
         "model_fn": None,
         "slice_dir": None,
+        "q_variance": 0.1,
         "n_targets": 20,
         "require_n_targets": True,
     },

@@ -4,6 +4,7 @@ import yaml
 import torch
 import numpy as np
 import mdtraj as md
+from typing import Optional
 from tqdm import tqdm
 from utils.model import DiffusionModel
 from utils.diffusion import Diffusion
@@ -24,9 +25,10 @@ def load_config(config_path: str) -> dict:
         raise RuntimeError(f"Error parsing YAML file: {e}")
 
 
-def setup_device(device_str: str | None) -> torch.device:
+def setup_device(device_str: Optional[str]) -> torch.device:
     """Initialize device (CUDA if available)."""
-    device = torch.device(device_str if device_str else ('cuda' if torch.cuda.is_available() else 'cpu'))
+    requested = torch.device(device_str or ('cuda' if torch.cuda.is_available() else 'cpu'))
+    device = torch.device('cpu') if requested.type == 'cuda' and not torch.cuda.is_available() else requested
     logger.info(f"Using device: {device}")
     return device
 
@@ -34,7 +36,9 @@ def setup_device(device_str: str | None) -> torch.device:
 def setup_model_and_diffusion(config: dict, device: torch.device):
     """Load model, diffusion process, and normalization constants."""
     checkpoint_path = config['inference']['checkpoint']
-    psf_path = config['data']['psf_path']
+    topology_path = config['data'].get('topology_path') or config['data'].get('psf_path')
+    if not topology_path:
+        raise ValueError("Generative.data.topology_path is required.")
     save_dir = os.path.dirname(checkpoint_path)
 
     # Load normalization constants
@@ -43,7 +47,7 @@ def setup_model_and_diffusion(config: dict, device: torch.device):
     logger.info("Loaded normalization constants (mean/std).")
 
     # Load topology
-    topology = md.load_psf(psf_path)
+    topology = md.load_topology(topology_path)
     num_atoms = topology.n_atoms
     atom_names = [atom.name for atom in topology.atoms]
     logger.info(f"Topology loaded: {num_atoms} atoms.")
@@ -115,10 +119,16 @@ def unnormalize_coords(coords: torch.Tensor, mean: torch.Tensor, std: torch.Tens
     return coords * std.to(coords.device) + mean.to(coords.device)
 
 
-def save_to_pdb(coords: np.ndarray, topology, output_path: str):
-    """Save coordinates as PDB trajectory."""
+def save_trajectory(coords: np.ndarray, topology, output_path: str):
+    """Save generated coordinates as a DCD or multi-model PDB trajectory."""
     traj = md.Trajectory(xyz=coords, topology=topology)
-    traj.save_pdb(output_path)
+    suffix = os.path.splitext(output_path)[1].lower()
+    if suffix == ".dcd":
+        traj.save_dcd(output_path)
+    elif suffix == ".pdb":
+        traj.save_pdb(output_path)
+    else:
+        raise ValueError("Generative.inference.output must end in .dcd or .pdb.")
     logger.info(f"Saved {len(coords)} structures to {output_path}")
 
 
@@ -135,10 +145,19 @@ def run_diffusion_inference(config: dict):
     device = setup_device(config.get('device'))
     inference_cfg = config['inference']
 
-    output_path = inference_cfg['output'] + ".pdb"
+    output_path = inference_cfg['output']
+    if not output_path:
+        raise ValueError("Generative.inference.output is required.")
+    if not os.path.splitext(output_path)[1]:
+        output_path += ".dcd"
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     num_samples = inference_cfg['num_samples']
     noise_scale = inference_cfg['noise_scale']
     sample_batch = inference_cfg.get('sample_batch', 10)
+    if int(num_samples) < 1 or int(sample_batch) < 1:
+        raise ValueError("num_samples and sample_batch must both be at least 1.")
+    if not np.isfinite(float(noise_scale)) or float(noise_scale) < 0:
+        raise ValueError("noise_scale must be finite and non-negative.")
 
     # === Load model and diffusion ===
     model, diffusion, mean, std, topology = setup_model_and_diffusion(config, device)
@@ -149,9 +168,10 @@ def run_diffusion_inference(config: dict):
     coords_unnorm = unnormalize_coords(coords, mean, std).cpu().numpy()
 
     # === Save results ===
-    save_to_pdb(coords_unnorm, topology, output_path)
+    save_trajectory(coords_unnorm, topology, output_path)
 
     logger.info(f"Inference completed in {(time.time() - start_time)/60:.2f} minutes.")
+    return output_path
 
 
 # =========================================================
@@ -165,4 +185,5 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, required=True, help='Path to YAML config file')
     args = parser.parse_args()
 
-    run_diffusion_inference(args.config['Generative'])
+    from common.config import load_config as load_shared_config
+    run_diffusion_inference(load_shared_config(args.config)['Generative'])

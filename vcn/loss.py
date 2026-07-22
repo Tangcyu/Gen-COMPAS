@@ -6,7 +6,7 @@ import torch
 def JAB(q_0, q_t, weights):
     L = torch.sum(weights * torch.square(q_0 - q_t))
     # L = torch.mean(torch.square(q_0 - q_t))
-    return L / torch.sum(weights)
+    return L / torch.sum(weights).clamp_min(torch.finfo(weights.dtype).eps)
     # return L
 
 
@@ -25,4 +25,3 @@ def loss_vcns_soft_endpoints(model, data, k_scale=100.0):
     res = torch.mean(res_A + res_B)
     return loss + k_scale*res
     # return res
-

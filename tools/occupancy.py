@@ -25,23 +25,31 @@ def load_config(config_path: str) -> dict:
 
 def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
     """Write PDB file with custom occupancy values."""
+    if traj.n_frames != 1:
+        raise ValueError("Each occupancy target must contain exactly one frame.")
+    if occupancies.shape != (1, traj.n_atoms):
+        raise ValueError("Occupancy array does not match the target structure.")
     with open(out_path, "w") as f:
         for i, atom in enumerate(traj.topology.atoms):
             res = atom.residue
+            chain = getattr(res.chain, "chain_id", None) or chr(65 + res.chain.index % 26)
+            residue_number = getattr(res, "resSeq", None) or res.index + 1
             coord = traj.xyz[0, i] * 10.0  # nm → Å
             occupancy = occupancies[0, i]  # assumes single frame
+            element = atom.element.symbol if atom.element is not None else atom.name[:1]
             f.write(
-                "ATOM  {:5d} {:>4s} {:>3s} {:1s}{:4d}    {:8.3f}{:8.3f}{:8.3f} {:4.2f}  0.00           {:>2s}\n".format(
+                "ATOM  {:5d} {:>4s} {:>3s} {:1s}{:4d}    {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:>2s}\n".format(
                     atom.index + 1,
                     atom.name,
-                    " A",
-                    " ",
-                    res.index + 1,
+                    res.name,
+                    chain[:1],
+                    residue_number,
                     coord[0],
                     coord[1],
                     coord[2],
                     occupancy,
-                    atom.element.symbol.rjust(2),
+                    0.0,
+                    element,
                 )
             )
         f.write("END\n")
@@ -50,12 +58,18 @@ def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
 def load_reference(topology_file: str, pdb_file: str):
     """Load reference structure and topology."""
     ref_traj = md.load(pdb_file, top=topology_file)
+    if ref_traj.n_frames != 1:
+        raise ValueError("Occupancy reference PDB must contain exactly one frame.")
     return ref_traj, ref_traj.topology, ref_traj.xyz
 
 
 def get_atom_groups(topology):
     """Identify hydrogen and heavy atoms, and build hydrogen-heavy atom bonds."""
-    hydrogen_atoms = [a.index for a in topology.atoms if a.name.startswith("H")]
+    hydrogen_atoms = [
+        atom.index
+        for atom in topology.atoms
+        if atom.element is not None and atom.element.symbol == "H"
+    ]
     heavy_atoms = [a.index for a in topology.atoms if a.index not in hydrogen_atoms]
 
     bonds = {}
@@ -68,7 +82,10 @@ def get_atom_groups(topology):
 
     missing = [h for h in hydrogen_atoms if h not in bonds]
     if missing:
-        print(f"Warning: {len(missing)} hydrogens without bonded heavy atom: {missing}")
+        raise ValueError(
+            f"Reference topology has {len(missing)} hydrogens without a bonded "
+            f"heavy atom: {missing}"
+        )
 
     atom_names = {atom.index: atom.name for atom in topology.atoms}
     return hydrogen_atoms, heavy_atoms, bonds, atom_names
@@ -96,7 +113,9 @@ def hydrogenate_and_set_occupancy(
 
     print(f"Selection: {len(selected_indices)} atoms will have occupancy = 1")
 
-    pdb_files = [f for f in os.listdir(pdb_dir) if f.endswith(".pdb")]
+    pdb_files = sorted(f for f in os.listdir(pdb_dir) if f.lower().endswith(".pdb"))
+    if not pdb_files:
+        raise FileNotFoundError(f"No PDB targets found in {pdb_dir}.")
     for pdb_file in tqdm(pdb_files, desc="Processing PDBs"):
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
@@ -108,6 +127,15 @@ def hydrogenate_and_set_occupancy(
 
         heavy_atoms_in_traj = [a.index for a in top.atoms if a.element.symbol != "H"]
         heavy_xyz = xyz[:, heavy_atoms_in_traj, :]
+        if len(heavy_atoms_in_traj) != len(heavy_atoms):
+            raise ValueError(
+                f"Heavy-atom count mismatch for {input_path}: "
+                f"target={len(heavy_atoms_in_traj)}, reference={len(heavy_atoms)}."
+            )
+        target_names = [top.atom(index).name for index in heavy_atoms_in_traj]
+        reference_names = [ref_top.atom(index).name for index in heavy_atoms]
+        if target_names != reference_names:
+            raise ValueError(f"Heavy-atom order/name mismatch for {input_path}.")
 
         full_xyz = np.zeros((num_frames, ref_top.n_atoms, 3))
         full_xyz[:, heavy_atoms, :] = heavy_xyz
@@ -145,13 +173,20 @@ def set_occupancy_only(
     atom_names = {atom.index: atom.name for atom in ref_top.atoms}
     selected_indices = ref_top.select(selection) if selection else []
 
-    pdb_files = [f for f in os.listdir(pdb_dir) if f.endswith(".pdb")]
+    pdb_files = sorted(f for f in os.listdir(pdb_dir) if f.lower().endswith(".pdb"))
+    if not pdb_files:
+        raise FileNotFoundError(f"No PDB targets found in {pdb_dir}.")
     for pdb_file in tqdm(pdb_files, desc="Setting occupancy"):
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
 
         traj = md.load(input_path, top=topology_file)
         num_frames = traj.n_frames
+        if traj.n_atoms != ref_top.n_atoms:
+            raise ValueError(
+                f"Atom-count mismatch for {input_path}: "
+                f"target={traj.n_atoms}, reference={ref_top.n_atoms}."
+            )
 
         for atom in traj.topology.atoms:
             atom.name = atom_names[atom.index]
@@ -185,6 +220,11 @@ def add_occupancy(config):
         set_occupancy_only(pdb_dir, topology_file, pdb_file, output_dir, selection)
 
     print("Pipeline completed successfully.")
+    return sorted(
+        os.path.join(output_dir, name)
+        for name in os.listdir(output_dir)
+        if name.lower().endswith(".pdb")
+    )
 
 
 # =========================================================
@@ -198,4 +238,5 @@ if __name__ == "__main__":
     parser.add_argument("--config", required=True, help="Path to YAML configuration file.")
     args = parser.parse_args()
 
-    run_occupancy_pipeline(args.config)
+    from common.config import load_config as load_shared_config
+    add_occupancy(load_shared_config(args.config)["Occupancy"])

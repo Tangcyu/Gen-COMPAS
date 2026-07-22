@@ -15,9 +15,8 @@ def calc_committors_id(model,determine_AB,positions, device):
     # input_tensor = torch.tensor(np.sin(positions[cv]*np.pi/180) for cv in positions)
     input_tensor = torch.tensor([np.sin(positions[:,0]*np.pi/180), np.sin(positions[:,1]*np.pi/180), np.sin(positions[:,2]*np.pi/180), np.cos(positions[:,0]*np.pi/180), np.cos(positions[:,1]*np.pi/180), np.cos(positions[:,2]*np.pi/180)], dtype=torch.float, device=device)
     # predict the output using the model
-    print(input_tensor.T[0])
-    exit()
-    output_tensor = model.forward_id(input_tensor.T)
+    with torch.no_grad():
+        output_tensor = model.forward_id(input_tensor.T)
 
     nn_results = output_tensor.cpu().detach().numpy().flatten()
     states = np.apply_along_axis(determine_AB, 1, positions)

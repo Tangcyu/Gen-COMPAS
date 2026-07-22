@@ -1,6 +1,20 @@
 # YAML configuration for Gen-COMPAS: Diffusion Model and VCN Committor Model
 # Adjust paths and parameters as needed for your system and data
 
+############ Iterative workflow configuration ############
+Workflow:
+  root_dir: "./Iterations"                  # Creates 0th.Iteration, 1st.Iteration, ...
+  initial_data_folders: []                  # Optional initial folders included in cumulative RiteWeight
+  initial_diffusion_data:
+    dcd_path: "/PATH/TO/INITIAL/UNBIASED.dcd"
+    topology_path: "/PATH/TO/INITIAL/TOPOLOGY.psf"
+  run_initial_unbiased: false               # Initial DCD above already exists
+  run_fel: true
+  warm_start_diffusion: true                # Initialize iteration N from iteration N-1 best_model.pt
+  iteration_noise_scales: {}                # Optional, e.g. {0: 10.0, 1: 5.0, 2: 1.5}
+  iteration_diffusion_epochs: {}            # Optional, e.g. {0: 50, 1: 10, 2: 10}
+  isolate_steps: true                       # Separate runtimes also release GPU memory
+
 ############ Generative model configuration ############
 Generative:
   # General settings
@@ -9,7 +23,7 @@ Generative:
   random_seed: 42                          # Random seed for reproducibility
   data:
     dcd_path: "./output_riteweight/diffusion_training.dcd"
-    psf_path: "./output_riteweight/diffusion_training.pdb"
+    topology_path: "./output_riteweight/diffusion_training.pdb"
 
   model:
     node_feature_dim: 64                   # Dimension for node embeddings (residue, atom type, coords)
@@ -35,7 +49,7 @@ Generative:
 
   inference:
     checkpoint: "PATH/TO/YOUR/checkpoint"  # Path to trained model checkpoint
-    output:     "PATH/TO/OUTPUT/directory" # Directory to save generated samples
+    output:     "PATH/TO/OUTPUT/candidates.dcd" # Generated trajectory
     num_samples: 1000                      # Number of samples to generate
     sample_batch: 100                      # Batch size for sampling (adjust based on GPU memory)
     noise_scale: 1.5                       # Scale of initial noise
@@ -46,7 +60,7 @@ VCN:
   device         : 'cuda:0'                # CUDA device to use (e.g., 'cuda:0' or 'cpu')
   label          : "test"
 
-  Sampling_path  : "."
+  sampling_path  : "."
   z_matrix       : True
   use_all        : False
   pair_distance  : False
@@ -56,13 +70,16 @@ VCN:
   atomindex      : []
   atomselect     : "protein and name CA"
   stride         : 1
+  time_shift     : 1                        # Lag in saved trajectory frames
+  trajectory_column: "trajectory_id"       # Prevent lag pairs crossing NAMD jobs
+  random_seed    : 42
 
   cvs            : ["CV1", "CV2"]          # Used only if z_matrix is false
   periodic       :  False                   # Periodicity of the CVs, only if z_matrix is False
 
   # Training parameters
   epochs         :  5000                    # Number of training epochs
-  learing_rate   :  0.0001                  # Learning rate
+  learning_rate  :  0.0001                  # Learning rate
   patience       :  200                     # Early stopping patience
   batch_size_factor :  0.6                  # Batch size as a factor of total frames
   num_layers     :  4                       # Number of hidden layers
@@ -71,12 +88,14 @@ VCN:
 
   out_dir        : "PATH/TO/OUTPUT/"        # Output folder for model and results
   cvs_to_plot    : ["CV1", "CV2"]          # CVs to plot in the analysis step, only 2D or 3D supported
+  plot_committor_projections: false         # Set true to write committor maps during committor_slice
 
   # Settings for slicing intermediate frames based on committor values
   gendcdfile     : "PATH/TO/GENERATED.dcd"  # DCD file to slice frames from (generated from generative model)
   model_fn       : "PATH/TO/CHECKPOINT"     # Path to trained model file
   slice_dir      : "PATH/TO/Slicing/OUTPUT" # Directory with slicing outputs
-  q_variance     :  0.1                     # Variance for committor value when selecting frames around 0.5
+  n_targets      :  20                      # Structural clusters after the fixed 0.4 <= q <= 0.6 slice
+  require_n_targets: true                   # Fail rather than emit fewer targets
 
 Clustering:
   topology       : "PATH/TO/PSF.psf"
@@ -116,9 +135,11 @@ NAMD:
     - name: "A"
       tmd_template: "TMD.A.conf"
       unbiased_template: "Unbiased.A.conf"
+      initial_unbiased_template: "Initial.A.conf" # Starts directly from state A
     - name: "B"
       tmd_template: "TMD.B.conf"
       unbiased_template: "Unbiased.B.conf"
+      initial_unbiased_template: "Initial.B.conf" # Starts directly from state B
 
   phases:
     tmd     : true
@@ -140,9 +161,9 @@ NAMD:
 RiteWeight:
   folders:
     - "PATH/TO/TRAJECTORY/FOLDER"
-  match_dcd: "unbias"                       # Matches *unbias*.dcd recursively
-  match_colvars: "unbias"                   # Matches *unbias*.colvars.traj recursively
-  tag_regex: "([AB])"                       # Tag used to pair DCD and colvars files
+  dcd_pattern: "*Unbiased.[AB].dcd"         # Exact recursive filename pattern
+  colvars_pattern: "*Unbiased.[AB].colvars.traj"
+  tag_regex: "\\.([AB])(?:\\.|$)"           # A/B protocol tag used for pairing
 
   io:
     top: "PATH/TO/TOPOLOGY.psf"
@@ -151,7 +172,7 @@ RiteWeight:
 
   pairing:
     allow_skip_first_colvars: true
-    strict: false
+    strict: true
 
   features:
     mode: "internal_zmat"                   # internal_zmat, internal_zmat_cached, or distances
@@ -203,6 +224,7 @@ RiteWeight:
       trajectory: "diffusion_training.dcd"
       topology: "diffusion_training.pdb"    # Matching selected topology for the DCD
       atomselect: "protein and not element H"
+      alignment_atomselect: null             # null uses the RiteWeight structural feature selection
       chunk_size: 1000
 
 ############ Weighted FEL projections from RiteWeight ############

@@ -2,7 +2,7 @@ import os
 import yaml
 import numpy as np
 from tqdm import tqdm
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from itertools import combinations
 from sklearn.cluster import KMeans
 from MDAnalysis import Universe
@@ -26,7 +26,7 @@ def load_config(config_path: str) -> dict:
         raise RuntimeError(f"Error reading YAML configuration: {e}")
 
 
-def load_universe(topology: str, trajectory: str | None = None) -> Universe:
+def load_universe(topology: str, trajectory: Optional[str] = None) -> Universe:
     """Load MDAnalysis Universe from topology and trajectory."""
     return Universe(topology, trajectory) if trajectory else Universe(topology)
 
@@ -36,6 +36,8 @@ def extract_internal_coordinates(universe: Universe, atom_selection: str = "all"
     sel = universe.select_atoms(atom_selection)
     n_atoms = len(sel)
     print(f"Number of selected atoms: {n_atoms}")
+    if n_atoms < 2:
+        raise ValueError("Clustering atom selection must contain at least two atoms.")
 
     pairs = np.array(list(combinations(range(n_atoms), 2)))
     n_pairs = len(pairs)
@@ -51,11 +53,14 @@ def extract_internal_coordinates(universe: Universe, atom_selection: str = "all"
     return coords
 
 
-def optimal_k_elbow(data: np.ndarray, max_k: int = 5) -> int:
+def optimal_k_elbow(data: np.ndarray, max_k: int = 5, random_seed: int = 0) -> int:
     """Determine optimal cluster count via elbow method."""
     distortions = []
+    max_k = min(int(max_k), len(data))
+    if max_k < 1:
+        raise ValueError("Cannot cluster an empty trajectory.")
     for k in range(1, max_k + 1):
-        kmeans = KMeans(n_clusters=k, random_state=0).fit(data)
+        kmeans = KMeans(n_clusters=k, random_state=random_seed, n_init=10).fit(data)
         distortions.append(kmeans.inertia_)
 
     deltas = np.diff(distortions)
@@ -69,10 +74,15 @@ def cluster_and_select_representatives(
     data: np.ndarray,
     n_clusters: int,
     n_per_cluster: int = 1,
-    select_farthest: bool = False
+    select_farthest: bool = False,
+    random_seed: int = 0,
 ) -> Tuple[np.ndarray, List[int]]:
     """Cluster data and select representatives closest (and optionally farthest) to cluster centers."""
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+    if not 1 <= int(n_clusters) <= len(data):
+        raise ValueError(f"n_clusters must be between 1 and {len(data)}.")
+    if int(n_per_cluster) < 1:
+        raise ValueError("n_per_cluster must be at least 1.")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_seed, n_init=10)
     labels = kmeans.fit_predict(data)
     selected_points = []
 
@@ -94,7 +104,7 @@ def cluster_and_select_representatives(
             farthest_idx = sorted_idx[-n_per_cluster:]
             selected_points.extend(cluster_indices[farthest_idx])
 
-    return labels, selected_points
+    return labels, list(dict.fromkeys(int(index) for index in selected_points))
 
 
 def save_selected_structures(universe: Universe, frame_indices: List[int], output_dir: str):
@@ -127,6 +137,7 @@ def run_clustering(config):
     n_per_cluster = config.get("n_per_cluster", 1)
     max_k = config.get("max_k", 5)
     select_farthest = config.get("select_farthest", False)
+    random_seed = int(config.get("random_seed", 0))
 
     # === Load universe ===
     universe = load_universe(topology, trajectory)
@@ -137,7 +148,7 @@ def run_clustering(config):
     # === Determine cluster count if not provided ===
     if n_clusters is None:
         print("Estimating optimal number of clusters...")
-        n_clusters = optimal_k_elbow(coords, max_k=max_k)
+        n_clusters = optimal_k_elbow(coords, max_k=max_k, random_seed=random_seed)
         print(f"Optimal cluster count: {n_clusters}")
 
     # === Perform clustering and select frames ===
@@ -147,12 +158,14 @@ def run_clustering(config):
         n_clusters=n_clusters,
         n_per_cluster=n_per_cluster,
         select_farthest=select_farthest,
+        random_seed=random_seed,
     )
 
     # === Save results ===
     print("Saving selected structures...")
     save_selected_structures(universe, representatives, output_dir)
     print("Clustering completed successfully.")
+    return representatives
 
 
 # =========================================================
@@ -166,4 +179,5 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, required=True, help="Path to YAML configuration file.")
     args = parser.parse_args()
 
-    run_clustering(args.config)
+    from common.config import load_config as load_shared_config
+    run_clustering(load_shared_config(args.config)["Clustering"])

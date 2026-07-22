@@ -13,7 +13,6 @@ authors = [
   { name = "Gen-COMPAS contributors" }
 ]
 dependencies = [
-  "kneed",
   "matplotlib",
   "MDAnalysis",
   "mdtraj",
@@ -31,11 +30,12 @@ dependencies = [
 Homepage = "https://github.com/Tangcyu/Gen-COMPAS"
 
 [project.scripts]
-gen-compas = "run:main"
+gen-compas = "workflow:main"
+gen-compas-workflow = "workflow:main"
 
 [tool.setuptools]
 include-package-data = true
-py-modules = ["run"]
+py-modules = ["workflow"]
 
 [tool.setuptools.packages.find]
 where = ["."]

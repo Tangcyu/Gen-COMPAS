@@ -1,14 +1,18 @@
 import os
 import sys
 import yaml
-import torch
 import pandas as pd
 import numpy as np
 import glob
 import mdtraj as md
-import torch.nn as nn
 from tqdm import tqdm
 import argparse
+
+# Import scikit-learn/SciPy before PyTorch. Some conda installations otherwise
+# bind an older system libstdc++ through PyTorch before SciPy is loaded.
+from vcn.process_traj import preprocess_traj
+import torch
+import torch.nn as nn
 
 
 # === Import modules from your project ===
@@ -17,7 +21,6 @@ from vcn.main import CommittorDataset
 from vcn.custom_dataloader import MyDataLoader
 from vcn.train import train_model
 from vcn.model import Encoder
-from vcn.process_traj import preprocess_traj
 from vcn.zmatrix import (
     get_internal_coordinates,
     get_pair_distances,
@@ -59,19 +62,34 @@ def prepare_output_dir(out_dir):
 # === Trajectory Loading ===
 # =========================================================
 
-def load_training_trajectories(path0, label, traj_fns, stride):
+def load_training_trajectories(
+    path0, label, traj_fns, stride, trajectory_column="trajectory_id"
+):
     """Load and concatenate RiteWeight Torch tables or legacy CSV tables."""
+    if not traj_fns:
+        raise ValueError("VCN.traj_fns must contain at least one training table.")
     if isinstance(traj_fns, str):
         traj_fns = [traj_fns]
     traj_fns = [fn if os.path.isabs(fn) else os.path.join(path0, fn) for fn in traj_fns]
     print(f"Found VCN training tables: {traj_fns}")
 
     tables = []
+    next_trajectory_id = 0
     for filename in traj_fns:
         if filename.lower().endswith((".pt", ".pth")):
-            tables.append(load_tensor_table(filename))
+            table = load_tensor_table(filename)
         else:
-            tables.append(pd.read_csv(filename))
+            table = pd.read_csv(filename)
+        if trajectory_column in table.columns:
+            local_ids, unique_ids = pd.factorize(
+                table[trajectory_column], sort=False
+            )
+            table[trajectory_column] = local_ids + next_trajectory_id
+            next_trajectory_id += len(unique_ids)
+        elif len(traj_fns) > 1:
+            table[trajectory_column] = next_trajectory_id
+            next_trajectory_id += 1
+        tables.append(table)
     traj = tables[0] if len(tables) == 1 else pd.concat(tables, ignore_index=True)
 
     if stride is not None:
@@ -144,10 +162,16 @@ def train_committor_model(config, riteweight_config=None):
     if riteweight_config is not None:
         validate_riteweight_vcn_featurization(config, riteweight_config)
 
+    random_seed = int(config.get("random_seed", 42))
+    np.random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(random_seed)
+
     # --- Extract configuration values ---
     label = config.get("label", "default_label")
     extra_label = config.get("extra_label", None)
-    path0 = config.get("Sampling_path", "./")
+    path0 = config.get("sampling_path", config.get("Sampling_path", "./"))
     out_dir = prepare_output_dir(config.get("out_dir", "./output/"))
     device = setup_device(config.get("device", "cuda:0"))
 
@@ -163,6 +187,8 @@ def train_committor_model(config, riteweight_config=None):
     cvs = config.get("cvs", [])
     periodic = config.get("periodic", False)
     val_ratio = config.get("val_ratio", 0.1)
+    time_shift = int(config.get("time_shift", 1))
+    trajectory_column = config.get("trajectory_column", "trajectory_id")
 
     epochs = config.get("epochs", 500)
     patience = config.get("patience", 20)
@@ -170,9 +196,12 @@ def train_committor_model(config, riteweight_config=None):
     num_nodes = config.get("num_nodes", 32)
     batch_size_factor = config.get("batch_size_factor", 1.0)
     k_scale = config.get("k", 1000.0)
+    learning_rate = float(config.get("learning_rate", config.get("learing_rate", 1e-4)))
 
     # --- Load trajectories ---
-    traj = load_training_trajectories(path0, label, traj_fns, stride)
+    traj = load_training_trajectories(
+        path0, label, traj_fns, stride, trajectory_column=trajectory_column
+    )
 
     if periodic:
         cvs = ["s" + cv for cv in cvs] + ["c" + cv for cv in cvs]
@@ -180,12 +209,23 @@ def train_committor_model(config, riteweight_config=None):
     if use_z_matrix:
         dcdtraj = load_dcd_trajectories(path0, dcdfile, topfile, stride)
         z_data, labels = convert_to_zmatrix(dcdtraj, atomselect, atomindex, topfile, path0, use_all, pair_distance)
+        if len(traj) != len(z_data):
+            raise ValueError(
+                "VCN table/DCD frame mismatch after stride: "
+                f"{len(traj)} table rows versus {len(z_data)} coordinate frames."
+            )
         traj = traj.reset_index(drop=True).join(z_data)
         cvs = labels
         print(f"Z-matrix joined. Final dimension: {len(labels)}")
 
     # --- Prepare training and validation sets ---
-    train_val_data, train_data, val_data = preprocess_traj(data=traj, val_ratio=val_ratio, time_shift=1)
+    _, train_data, val_data = preprocess_traj(
+        data=traj,
+        val_ratio=val_ratio,
+        time_shift=time_shift,
+        trajectory_column=trajectory_column,
+        random_seed=random_seed,
+    )
     train_set = CommittorDataset(data=train_data, variables=cvs, device=device)
     val_set = CommittorDataset(data=val_data, variables=cvs, device=device)
 
@@ -210,6 +250,7 @@ def train_committor_model(config, riteweight_config=None):
         batch_size_factor=batch_size_factor,
         dataloader=MyDataLoader,
         k_scale=k_scale,
+        learning_rate=learning_rate,
     )
 
     # --- Save CPU copy ---
@@ -217,6 +258,7 @@ def train_committor_model(config, riteweight_config=None):
     cpu_model_path = os.path.join(out_dir, f"{label_suffix}_cpu_best_model.pt")
     best_model.to("cpu").save(cpu_model_path)
     print(f"Saved CPU model at {cpu_model_path}")
+    return cpu_model_path
 
 
 # =========================================================
@@ -232,7 +274,8 @@ def main():
     if not os.path.isfile(config_path):
         print(f"Error: Config file {config_path} does not exist.")
         sys.exit(1)
-    config = load_yaml_config(config_path)
+    from common.config import load_config
+    config = load_config(config_path)
     train_committor_model(config["VCN"], config.get("RiteWeight"))
 
 

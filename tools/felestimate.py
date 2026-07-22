@@ -217,6 +217,10 @@ def run_fel_estimate(config: dict):
     weight_column = config.get("weight_column", "weight")
     temperature_K = float(config.get("temperature_K", 300.0))
     probability_floor = float(config.get("probability_floor", 1.0e-300))
+    if not np.isfinite(temperature_K) or temperature_K <= 0:
+        raise ValueError("FEL_estimate.temperature_K must be finite and positive.")
+    if not np.isfinite(probability_floor) or not 0 < probability_floor < 1:
+        raise ValueError("FEL_estimate.probability_floor must be between 0 and 1.")
 
     outputs = []
     for index, projection in enumerate(projections):

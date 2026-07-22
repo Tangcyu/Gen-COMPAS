@@ -1,0 +1,37 @@
+# Minimal Gen-COMPAS input. All omitted values come from common/config.py.
+# Replace the paths and the system-specific basin/projection definitions.
+
+Workflow:
+  initial_diffusion_data:
+    dcd_path: "/PATH/TO/INITIAL/UNBIASED.dcd"
+    topology_path: "/PATH/TO/INITIAL/TOPOLOGY.psf"
+
+Occupancy:
+  topology_file: "/PATH/TO/system_withH.psf"
+  pdb_file: "/PATH/TO/reference_withH.pdb"
+
+NAMD:
+  namd_path: "/PATH/TO/namd3"
+  template_path: "/PATH/TO/NAMD_inputs"
+  # Unbiased.A/B.conf must write the selected DCDs and matching colvars files
+  # consumed by the RiteWeight filename patterns.
+  execution:
+    device: "gpu"
+    parallel_jobs: 2
+    gpu:
+      devices: ["0", "1"]
+
+RiteWeight:
+  io:
+    top: "/PATH/TO/system_withH.psf"
+  committor_labels:
+    basin_A: [0.0, 10.0]
+    basin_B: [10.0, 0.0]
+    basin_size: [5.0, 5.0]
+
+FEL_estimate:
+  projections:
+    - name: "CV1_CV2"
+      cvs: ["CV1", "CV2"]
+      ranges: [[0.0, 180.0], [0.0, 180.0]]
+      periodicities: [true, true]

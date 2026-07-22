@@ -34,7 +34,7 @@ class NAMDJob:
     """A prepared target/protocol simulation directory."""
 
     name: str
-    target: Path
+    target: Optional[Path]
     protocol: Protocol
     work_dir: Path
 
@@ -178,19 +178,33 @@ def _prepare_jobs(
     *,
     template_dir: Path,
     output_dir: Path,
-    target_dir: Path,
-    targets: Sequence[Path],
+    target_dir: Optional[Path],
+    targets: Optional[Sequence[Path]],
     target_filename: str,
     protocols: Sequence[Protocol],
     force_constant: float,
     existing_policy: str,
+    render_tmd: bool,
 ) -> tuple[List[NAMDJob], List[Dict[str, Any]]]:
     specifications = []
     names = set()
-    for target in targets:
-        relative_stem = target.relative_to(target_dir).with_suffix("").as_posix()
+    if targets:
+        if target_dir is None:
+            raise ValueError("target_dir is required when targets are provided.")
+        for target in targets:
+            relative_stem = target.relative_to(target_dir).with_suffix("").as_posix()
+            for protocol in protocols:
+                name = _safe_name(f"{relative_stem}__{protocol.name}")
+                if name in names:
+                    raise ValueError(f"NAMD job-name collision: {name}")
+                names.add(name)
+                specifications.append((name, target, protocol, output_dir / name))
+    else:
+        if render_tmd:
+            raise ValueError("TMD jobs require at least one target structure.")
         for protocol in protocols:
-            name = _safe_name(f"{relative_stem}__{protocol.name}")
+            target = None
+            name = _safe_name(protocol.name)
             if name in names:
                 raise ValueError(f"NAMD job-name collision: {name}")
             names.add(name)
@@ -217,21 +231,23 @@ def _prepare_jobs(
             continue
 
         shutil.copytree(template_dir, work_dir)
-        shutil.copy2(target, work_dir / target_filename)
+        if target is not None:
+            shutil.copy2(target, work_dir / target_filename)
         replacements = {
             "TMD_FORCE_CONSTANT": f"{force_constant:g}",
             "TARGET_PDB": target_filename,
-            "TARGET_SOURCE": str(target),
+            "TARGET_SOURCE": "" if target is None else str(target),
             "JOB_NAME": name,
             "JOB_DIR": str(work_dir),
             "PROTOCOL": protocol.name,
         }
-        _render_template(
-            template_dir / protocol.tmd_template,
-            (work_dir / protocol.tmd_template).resolve(),
-            replacements,
-            is_tmd=True,
-        )
+        if render_tmd:
+            _render_template(
+                template_dir / protocol.tmd_template,
+                (work_dir / protocol.tmd_template).resolve(),
+                replacements,
+                is_tmd=True,
+            )
         _render_template(
             template_dir / protocol.unbiased_template,
             (work_dir / protocol.unbiased_template).resolve(),
@@ -322,7 +338,7 @@ def _run_job(
     result: Dict[str, Any] = {
         "job": job.name,
         "protocol": job.protocol.name,
-        "target": str(job.target),
+        "target": None if job.target is None else str(job.target),
         "work_dir": str(job.work_dir),
         "mode": mode,
         "device": device,
@@ -385,13 +401,16 @@ def run_namd_workflow(config: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "NAMD.execution.parallel_jobs cannot exceed the number of GPU device slots."
             )
 
-    protocols = _load_protocols(config, template_dir)
-    target_dir, targets, target_filename = _discover_targets(config)
     phase_config = config.get("phases", {})
     run_tmd = bool(phase_config.get("tmd", True))
     run_unbiased = bool(phase_config.get("unbiased", True))
     if not run_tmd and not run_unbiased:
         raise ValueError("At least one NAMD phase must be enabled.")
+    protocols = _load_protocols(config, template_dir)
+    if run_tmd or "targets" in config:
+        target_dir, targets, target_filename = _discover_targets(config)
+    else:
+        target_dir, targets, target_filename = None, None, "output.pdb"
     dry_run = bool(execution.get("dry_run", False))
 
     # Validate command templates before creating any job directories.
@@ -419,6 +438,7 @@ def run_namd_workflow(config: Mapping[str, Any]) -> List[Dict[str, Any]]:
         protocols=protocols,
         force_constant=force_constant,
         existing_policy=str(config.get("existing_job_policy", "error")).lower(),
+        render_tmd=run_tmd,
     )
 
     device_locks = {

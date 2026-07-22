@@ -3,6 +3,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import numpy as np
+import math
 from copy import deepcopy
 
 
@@ -10,7 +11,7 @@ from copy import deepcopy
 def train_one_epoch(epoch_index, tb_writer, train_loader, model_to_train, optimizer, loss_function, report_step, k_scale):
     print('EPOCH {} ({} batches):'.format(epoch_index + 1, len(train_loader)))
     running_loss = 0.0
-    last_loss = 0.0
+    total_loss = 0.0
     # Here, we use enumerate(training_loader) instead of
     # iter(training_loader) so that we can track the batch
     # index and do some intra-epoch reporting
@@ -24,21 +25,23 @@ def train_one_epoch(epoch_index, tb_writer, train_loader, model_to_train, optimi
         optimizer.step()
         # gather data and report
         running_loss += loss.item()
+        total_loss += loss.item()
         if i % report_step == report_step - 1:
             last_loss = running_loss / report_step
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(train_loader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
             running_loss = 0.0
-    return last_loss
+    return total_loss / len(train_loader)
 
 
 @torch.compile
 def val_one_epoch(val_loader, model_to_train, loss_function, k_scale):
     running_loss = 0.0
-    for data in val_loader:
-        loss = loss_function(model_to_train, data, k_scale=k_scale)
-        running_loss += loss.item()
+    with torch.no_grad():
+        for data in val_loader:
+            loss = loss_function(model_to_train, data, k_scale=k_scale)
+            running_loss += loss.item()
     avg_loss = running_loss / len(val_loader)
     return avg_loss
 
@@ -58,19 +61,27 @@ def train_model(model_to_train, output_prefix, train_set, val_set, loss_function
                 old_checkpoint=None, epoch_metrics_callback=None, dataloader=None, load_old_model_only=False, k_scale=100.0):
     if dataloader is None:
         raise RuntimeError('Please provide a valid dataloader')
+    if int(epochs) < 1 or int(patience) < 1:
+        raise ValueError("epochs and patience must both be at least 1.")
+    if not math.isfinite(float(learning_rate)) or float(learning_rate) <= 0:
+        raise ValueError("learning_rate must be finite and positive.")
     # compute an appropriate batch size
     # see https://machine-learning.paperspace.com/wiki/epoch
     num_samples = len(train_set)
+    if num_samples < 1 or len(val_set) < 1:
+        raise ValueError("Training and validation sets must both be non-empty.")
+    if not 0.0 <= float(batch_size_factor) <= 1.0:
+        raise ValueError("batch_size_factor must be between 0 and 1.")
     # batch_size = int(np.sqrt(num_samples))
     # typically we have a training set larger than 1e7, so we should use a big batch size
     # if this is too small, then the batch cannot approximate the Koopman operator correctly
-    batch_size = int(np.power(num_samples, batch_size_factor))
+    batch_size = max(1, int(np.power(num_samples, batch_size_factor)))
     print(f'Batch size: {batch_size}')
     # train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
     # val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False)
     train_loader = dataloader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = dataloader(val_set, batch_size=len(val_set), shuffle=False)
-    report_step = int(np.power(10, int(np.log10(len(train_loader)))))
+    report_step = max(1, int(np.power(10, int(np.log10(len(train_loader))))))
     optimizer = torch.optim.Adam(model_to_train.parameters(), lr=learning_rate)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     if old_checkpoint is not None:
@@ -90,7 +101,7 @@ def train_model(model_to_train, output_prefix, train_set, val_set, loss_function
         writer_filename = f'{output_prefix}_trainer_{timestamp}'
         best_epochs = 0
         best_model_state_dict = deepcopy(model_to_train.state_dict())
-        best_vloss = 1e7
+        best_vloss = float('inf')
     writer = SummaryWriter(writer_filename)
     checkpoint_filename = f'{output_prefix}_{timestamp}.checkpoint'
     while epoch_number < epochs:
@@ -102,6 +113,8 @@ def train_model(model_to_train, output_prefix, train_set, val_set, loss_function
         model_to_train.train(False)
         # the loss of validation
         avg_vloss = val_one_epoch(val_loader, model_to_train, loss_function, k_scale)
+        if not math.isfinite(avg_loss) or not math.isfinite(avg_vloss):
+            raise RuntimeError("VCN training produced a non-finite loss.")
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
         # Log the running loss averaged per batch
         # for both training and validation
@@ -138,4 +151,5 @@ def train_model(model_to_train, output_prefix, train_set, val_set, loss_function
             best_epochs, best_model_state_dict, best_vloss, checkpoint_filename)
         epoch_number += 1
     model_to_train.load_state_dict(best_model_state_dict)
+    writer.close()
     return model_to_train

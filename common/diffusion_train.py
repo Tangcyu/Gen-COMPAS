@@ -1,8 +1,11 @@
 # train.py
 import os
 import time
+from datetime import datetime
+import random
 import yaml
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -36,24 +39,35 @@ def load_config(config_path: str) -> dict:
 
 def setup_device(device_str: str) -> torch.device:
     """Set up the CUDA or CPU device."""
-    device = torch.device(device_str if torch.cuda.is_available() else 'cpu')
+    requested = torch.device(device_str or "cpu")
+    device = torch.device("cpu") if requested.type == "cuda" and not torch.cuda.is_available() else requested
     logger.info(f"Using device: {device}")
     return device
 
 
 def setup_dataloader(data_cfg: dict, training_cfg: dict):
     """Initialize the dataset and data loader."""
+    topology_path = data_cfg.get('topology_path') or data_cfg.get('psf_path')
+    if not topology_path:
+        raise ValueError("Generative.data.topology_path is required.")
+    if not data_cfg.get('dcd_path'):
+        raise ValueError("Generative.data.dcd_path is required.")
+    configured_batch_size = int(training_cfg['batch_size'])
+    if configured_batch_size < 1:
+        raise ValueError("Generative.training.batch_size must be at least 1.")
     dataset = ProteinDataset(
-        psf_path=data_cfg['psf_path'],
+        topology_path=topology_path,
         dcd_path=data_cfg['dcd_path']
     )
+    if len(dataset) == 0:
+        raise ValueError("The diffusion training trajectory contains no frames.")
     loader = DataLoader(
         dataset,
-        batch_size=training_cfg['batch_size'],
+        batch_size=min(configured_batch_size, len(dataset)),
         shuffle=True,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
         num_workers=training_cfg.get('num_workers', 4),
-        drop_last=True
+        drop_last=False
     )
     logger.info(f"Dataset: {len(dataset)} samples, {dataset.num_atoms} atoms per sample.")
     return dataset, loader
@@ -108,6 +122,12 @@ def setup_optimizer_scheduler(model, training_cfg, steps_per_epoch):
 def train_diffusion_model(config: dict):
     """Train the diffusion model."""
     start_time = time.time()
+    seed = int(config.get("random_seed", 42))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
     # Set up directories and devices
     save_dir = config['save_dir']
@@ -118,13 +138,17 @@ def train_diffusion_model(config: dict):
     model_cfg = config['model']
     diffusion_cfg = config['diffusion']
     training_cfg = config['training']
+    if int(training_cfg['epochs']) < 1:
+        raise ValueError("Generative.training.epochs must be at least 1.")
 
     grad_clip_value = training_cfg.get('grad_clip', 0.0)
-    save_interval = training_cfg.get('save_interval', 50)
+    save_interval = int(training_cfg.get('save_interval', 50))
+    if save_interval < 1:
+        raise ValueError("Generative.training.save_interval must be at least 1.")
     init_ckpt = config.get('init_checkpoint_path', None)
 
     # Save configuration for reproducibility
-    config_path = os.path.join(save_dir, str(time.ctime)+'config.yaml')
+    config_path = os.path.join(save_dir, datetime.now().strftime('%Y%m%d_%H%M%S_config.yaml'))
     with open(config_path, 'w') as f:
         yaml.dump(config, f)
     logger.info(f"Configuration saved to {config_path}")
@@ -157,6 +181,7 @@ def train_diffusion_model(config: dict):
     for epoch in range(training_cfg['epochs']):
         model.train()
         epoch_loss = 0.0
+        completed_batches = 0
         progress = tqdm(loader, desc=f"Epoch {epoch+1}/{training_cfg['epochs']}", leave=True)
 
         for step, batch in enumerate(progress):
@@ -171,8 +196,8 @@ def train_diffusion_model(config: dict):
                 x0_centered, _ = center_coords(x0_uncentered)
                 loss = F.mse_loss(pred_x0_centered, x0_centered)
 
-            if torch.isnan(loss):
-                logger.warning(f"NaN loss at Epoch {epoch+1}, Step {step} — skipping.")
+            if not torch.isfinite(loss):
+                logger.warning(f"Non-finite loss at Epoch {epoch+1}, Step {step} — skipping.")
                 continue
 
             # Backpropagation and optimization
@@ -187,9 +212,12 @@ def train_diffusion_model(config: dict):
             scheduler.step()
 
             epoch_loss += loss.item()
+            completed_batches += 1
             progress.set_postfix(loss=f"{loss.item():.4f}", lr=f"{scheduler.get_last_lr()[0]:.3e}")
 
-        avg_loss = epoch_loss / len(loader)
+        if completed_batches == 0:
+            raise RuntimeError(f"Every batch produced a NaN loss in epoch {epoch + 1}.")
+        avg_loss = epoch_loss / completed_batches
         logger.info(f"Epoch {epoch+1} | Avg Loss: {avg_loss:.5f} | LR: {scheduler.get_last_lr()[0]:.3e}")
 
         # Save best model
@@ -210,6 +238,7 @@ def train_diffusion_model(config: dict):
     torch.save(model.state_dict(), final_model_path)
     logger.info(f"Training completed. Final model saved to {final_model_path}")
     logger.info(f"Total training time: {(time.time() - start_time)/3600:.2f} hours")
+    return {"best_model": best_model_path, "final_model": final_model_path}
 
 
 # ---------------------------------------------------------

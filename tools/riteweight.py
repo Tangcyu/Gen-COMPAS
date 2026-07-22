@@ -49,25 +49,31 @@ def pair_by_subdir_tag(files: List[str], root: str, tag_re: str) -> Dict[Tuple[s
         mm = cre.search(bname)
         if mm:
             tag = mm.group(1)
-            m[(sub, tag)] = fp
+            key = (sub, tag)
+            if key in m:
+                raise ValueError(
+                    f"Multiple files map to the same RiteWeight pair key {key}: "
+                    f"{m[key]} and {fp}. Tighten the file patterns."
+                )
+            m[key] = fp
     return m
 
 def find_pairs_dcd_colvars(
     roots: List[str],
-    match_dcd: str,
-    match_colvars: str,
+    dcd_pattern: str,
+    colvars_pattern: str,
     tag_re: str = r"([ABM])",
 ) -> List[Tuple[str, str]]:
     pairs: List[Tuple[str, str]] = []
     for root in roots:
-        dcds = find_matching(root, f"*{match_dcd}*.dcd")
-        cols = find_matching(root, f"*{match_colvars}*.colvars.traj")
+        dcds = find_matching(root, dcd_pattern)
+        cols = find_matching(root, colvars_pattern)
 
         if not dcds:
-            print(f"[WARN] No DCD files under {root} matching '*{match_dcd}*.dcd'")
+            print(f"[WARN] No DCD files under {root} matching {dcd_pattern!r}")
             continue
         if not cols:
-            print(f"[WARN] No colvars files under {root} matching '*{match_colvars}*.colvars.traj'")
+            print(f"[WARN] No colvars files under {root} matching {colvars_pattern!r}")
             continue
 
         m_d = pair_by_subdir_tag(dcds, root, tag_re)
@@ -469,14 +475,28 @@ def save_scaled_pmf_if_requested(
 # =========================================================
 
 
-def cache_meta_dict(mode: str, cfg_features: dict, top_path: str, stride: int, lag: int) -> dict:
+def cache_meta_dict(mode: str, cfg_features: dict, top_path: str, stride: int,
+                    lag: int, pairs: List[Tuple[str, str]]) -> dict:
     """Minimal metadata to validate cache reproducibility."""
     meta = {
         "mode": mode,
         "feature_schema": FEATURE_SCHEMA,
         "top": os.path.abspath(top_path),
+        "top_size": os.path.getsize(top_path),
+        "top_mtime_ns": os.stat(top_path).st_mtime_ns,
         "stride": int(stride),
         "lag": int(lag),
+        "sources": [
+            {
+                "dcd": os.path.abspath(dcd),
+                "dcd_size": os.path.getsize(dcd),
+                "dcd_mtime_ns": os.stat(dcd).st_mtime_ns,
+                "colvars": os.path.abspath(colvars),
+                "colvars_size": os.path.getsize(colvars),
+                "colvars_mtime_ns": os.stat(colvars).st_mtime_ns,
+            }
+            for dcd, colvars in pairs
+        ],
     }
     if mode == "internal_zmat":
         meta["internal_zmat"] = cfg_features.get("internal_zmat", {})
@@ -576,6 +596,7 @@ def load_or_compute_features_with_cache(
         top_path=top_path,
         stride=stride,
         lag=lag,
+        pairs=pairs,
     )
 
     def load_cache():
@@ -598,7 +619,7 @@ def load_or_compute_features_with_cache(
     df_save_list = []
 
     offset = 0
-    for dcd_path, col_path in tqdm(pairs):
+    for pair_index, (dcd_path, col_path) in enumerate(tqdm(pairs)):
         # load dcd just to know n_frames (mdtraj cheap-ish) unless you want to infer from colvars only
         traj = md.load(dcd_path, top=top_path)
         df = read_colvars_traj(col_path)
@@ -648,6 +669,9 @@ def load_or_compute_features_with_cache(
         if nF <= L:
             print(f"[WARN] too short for lag={L} -> skipped: {dcd_path}")
             continue
+
+        df_save.insert(0, "trajectory_frame", np.arange(nF, dtype=np.int64))
+        df_save.insert(0, "trajectory_id", pair_index)
 
         starts = np.arange(0, nF - L, dtype=np.int64) + offset
         ends = starts + L
@@ -760,11 +784,12 @@ def write_diffusion_training_data(
     top_path: str,
     stride: int,
     atomselect: Optional[str],
+    alignment_atomselect: str,
     dcd_path: str,
     topology_path: str,
     chunk_size: int,
 ):
-    """Write the aligned RiteWeight frames as a selected DCD and matching PDB topology."""
+    """RMSD-align RiteWeight frames, then write a selected DCD and topology."""
     topology = md.load_topology(top_path)
     if atomselect:
         atom_indices = topology.select(atomselect)
@@ -772,6 +797,17 @@ def write_diffusion_training_data(
         atom_indices = np.arange(topology.n_atoms, dtype=int)
     if len(atom_indices) == 0:
         raise ValueError(f"Diffusion atom selection matched no atoms: {atomselect!r}")
+
+    alignment_indices = topology.select(alignment_atomselect)
+    if len(alignment_indices) < 3:
+        raise ValueError(
+            "Diffusion RMSD alignment needs at least three atoms; "
+            f"{alignment_atomselect!r} matched {len(alignment_indices)}."
+        )
+
+    reference = md.load_frame(used_pairs[0][0], 0, top=top_path)
+    if reference.n_frames != 1:
+        raise RuntimeError("Could not load the diffusion RMSD reference frame.")
 
     os.makedirs(os.path.dirname(dcd_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(topology_path) or ".", exist_ok=True)
@@ -789,6 +825,9 @@ def write_diffusion_training_data(
                 chunk=max(int(chunk_size), 1),
                 stride=max(int(stride), 1),
             ):
+                # Calculate the rigid fit from the alignment selection, then
+                # apply that transform to every atom before selecting output.
+                chunk.superpose(reference, atom_indices=alignment_indices)
                 selected = chunk.atom_slice(atom_indices)
                 if not wrote_topology and selected.n_frames:
                     selected[0].save_pdb(topology_path, force_overwrite=True)
@@ -817,6 +856,10 @@ def write_diffusion_training_data(
         f"[OK] Saved diffusion training trajectory: {dcd_path} "
         f"({total_frames} frames, {len(atom_indices)} atoms)"
     )
+    print(
+        "[OK] RMSD-aligned diffusion frames using "
+        f"{len(alignment_indices)} atoms from {alignment_atomselect!r}"
+    )
     print(f"[OK] Saved matching diffusion topology: {topology_path}")
     return total_frames, len(atom_indices)
 
@@ -835,8 +878,12 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
     if not roots:
         raise SystemExit("config.yaml must define 'folders: [..]'")
 
-    match_dcd = cfg.get("match_dcd", "")
-    match_colvars = cfg.get("match_colvars", "")
+    dcd_pattern = cfg.get("dcd_pattern")
+    colvars_pattern = cfg.get("colvars_pattern")
+    if not dcd_pattern:
+        dcd_pattern = f"*{cfg.get('match_dcd', '')}*.dcd"
+    if not colvars_pattern:
+        colvars_pattern = f"*{cfg.get('match_colvars', '')}*.colvars.traj"
     tag_re = cfg.get("tag_regex", r"([AB])")
 
     top_path = cfg["io"]["top"]
@@ -847,7 +894,9 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
     allow_skip_first = bool(cfg.get("pairing", {}).get("allow_skip_first_colvars", True))
     strict = bool(cfg.get("pairing", {}).get("strict", False))
 
-    pairs = find_pairs_dcd_colvars(roots, match_dcd, match_colvars, tag_re=tag_re)
+    pairs = find_pairs_dcd_colvars(
+        roots, dcd_pattern, colvars_pattern, tag_re=tag_re
+    )
     print(f"[INFO] Found {len(pairs)} (dcd,colvars) pairs across folders.")
 
     if check_mismatch:
@@ -871,6 +920,15 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         basin_A = lab_cfg["basin_A"]
         basin_B = lab_cfg["basin_B"]
         basin_size = lab_cfg["basin_size"]
+        if not cvs_to_label or basin_A is None or basin_B is None or basin_size is None:
+            raise ValueError(
+                "Enabled committor labels require cvs_to_label, basin_A, "
+                "basin_B, and basin_size."
+            )
+        if len(basin_A) != len(cvs_to_label) or len(basin_B) != len(cvs_to_label):
+            raise ValueError("Committor basin centers must match cvs_to_label dimensions.")
+        if not np.isscalar(basin_size) and len(basin_size) != len(cvs_to_label):
+            raise ValueError("committor_labels.basin_size has the wrong dimension.")
         k_pref = float(lab_cfg.get("k_prefactor", 1.0))
         angle_unit = str(lab_cfg.get("angle_unit", "degree")).lower()
         determine_AB = determine_AB_functor(basin_A, basin_B, basin_size)
@@ -1054,6 +1112,12 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
             top_path=top_path,
             stride=stride,
             atomselect=diffusion_cfg.get("atomselect"),
+            alignment_atomselect=(
+                diffusion_cfg.get("alignment_atomselect")
+                or internal_cfg.get("atomselect")
+                or diffusion_cfg.get("atomselect")
+                or "all"
+            ),
             dcd_path=diffusion_dcd_path,
             topology_path=diffusion_topology_path,
             chunk_size=int(diffusion_cfg.get("chunk_size", 1000)),

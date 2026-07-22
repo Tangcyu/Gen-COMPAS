@@ -4,10 +4,10 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 import math 
 from .embedding import SinusoidalEmbedding 
-from typing import List
+from typing import List, Optional
 
 
-def scatter_mean_torch(src: torch.Tensor, index: torch.Tensor, dim: int = 0, dim_size: int | None = None):
+def scatter_mean_torch(src: torch.Tensor, index: torch.Tensor, dim: int = 0, dim_size: Optional[int] = None):
     """Compute scatter-mean with native PyTorch ops to avoid torch-scatter."""
     if dim != 0:
         raise NotImplementedError("scatter_mean_torch currently supports only dim=0.")
@@ -72,31 +72,30 @@ def knn_graph_pytorch(x: torch.Tensor, k: int, batch: torch.Tensor = None, loop:
         col = col.flatten() 
 
     else:
-        num_nodes_total = x.shape[0]
-
-        # Mask prevents edges between different batch items
-        batch_mask = batch.unsqueeze(0) == batch.unsqueeze(1)
-
-        dist_full = torch.cdist(x, x) 
-        dist_full[~batch_mask] = float('inf') 
-
-        if not loop:
-            dist_full.fill_diagonal_(float('inf'))
-
-        effective_k = min(k, num_nodes_total - (1 if not loop else 0))
-        if effective_k <= 0:
-             return torch.empty((2,0), dtype=torch.long, device=x.device)
-
-        _, col = torch.topk(dist_full, effective_k, dim=1, largest=False) 
-        row = torch.arange(num_nodes_total, device=x.device).view(-1, 1).repeat(1, effective_k) 
-
-        row = row.flatten() 
-        col = col.flatten() 
-
-        if not loop:
-            mask = row != col
-            row = row[mask]
-            col = col[mask]
+        if batch.ndim != 1 or batch.shape[0] != x.shape[0]:
+            raise ValueError("batch must contain one assignment per node.")
+        rows, cols = [], []
+        for batch_id in torch.unique(batch, sorted=True):
+            node_indices = torch.nonzero(batch == batch_id, as_tuple=False).flatten()
+            num_nodes = node_indices.numel()
+            effective_k = min(k, num_nodes - (0 if loop else 1))
+            if effective_k <= 0:
+                continue
+            local_x = x[node_indices]
+            distances = torch.cdist(local_x, local_x)
+            if not loop:
+                distances.fill_diagonal_(float("inf"))
+            local_col = torch.topk(
+                distances, effective_k, dim=1, largest=False
+            ).indices
+            local_row = torch.arange(num_nodes, device=x.device).view(-1, 1)
+            local_row = local_row.expand(-1, effective_k)
+            rows.append(node_indices[local_row.flatten()])
+            cols.append(node_indices[local_col.flatten()])
+        if not rows:
+            return torch.empty((2, 0), dtype=torch.long, device=x.device)
+        row = torch.cat(rows)
+        col = torch.cat(cols)
 
 
     if flow == 'source_to_target':

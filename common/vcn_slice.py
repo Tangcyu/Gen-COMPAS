@@ -1,5 +1,4 @@
 import os
-import torch
 import numpy as np
 import pandas as pd
 import mdtraj as md
@@ -7,13 +6,17 @@ import yaml
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
-from kneed import KneeLocator
+import torch
 from vcn.zmatrix import (
     get_internal_coordinates,
     get_minimal_internal_coordinates,
     get_pair_distances,
 )
 from common.feature_contract import validate_riteweight_vcn_featurization
+
+
+Q_SLICE_MIN = 0.4
+Q_SLICE_MAX = 0.6
 
 
 # =========================================================
@@ -26,6 +29,15 @@ def load_yaml_config(file_path):
         return yaml.safe_load(f)
 
 
+def committor_projection_plotting_enabled(config):
+    """Return the explicit workflow switch for committor projection plots."""
+    enabled = config.get("plot_committor_projections", False)
+    if not isinstance(enabled, bool):
+        raise TypeError("VCN.plot_committor_projections must be true or false.")
+    return enabled
+
+
+@torch.no_grad()
 def calc_committors_sig(model, positions, periodic=False, device='cpu'):
     """Calculate committor values for input coordinates."""
     if periodic:
@@ -46,7 +58,9 @@ def calc_committors_sig(model, positions, periodic=False, device='cpu'):
 
 def load_dcd_data(path0, dcdfile, topfile, atomselect):
     """Load DCD trajectory and apply atom selection if given."""
-    traj = md.load(dcdfile, top=os.path.join(path0, topfile))
+    dcd_path = dcdfile if os.path.isabs(dcdfile) else os.path.join(path0, dcdfile)
+    top_path = topfile if os.path.isabs(topfile) else os.path.join(path0, topfile)
+    traj = md.load(dcd_path, top=top_path)
     if atomselect is not None:
         atomindex = traj.topology.select(atomselect) + 1
     else:
@@ -64,7 +78,7 @@ def convert_to_zmatrix(traj, atomindex, use_all=False, pair_distance=False):
         labels, values = get_minimal_internal_coordinates(traj, atomindex)
 
     print(f"Converted trajectory to Z-matrix with {len(labels)} variables.")
-    return pd.DataFrame(np.vstack(values), columns=labels), labels
+    return pd.DataFrame(values, columns=labels), labels
 
 
 # =========================================================
@@ -101,38 +115,51 @@ def plot_committor_pairs(traj, q_values, cvs, out_dir, prefix):
 
 
 # =========================================================
-# === Clustering ===
+# === Structural clustering after the fixed committor slice ===
 # =========================================================
 
-def perform_kmeans_clustering(points, out_dir):
-    """Run KMeans and save cluster centers."""
-    inertia = []
-    for k in range(1, 10):
-        km = KMeans(n_clusters=k, random_state=42, n_init=10).fit(points)
-        inertia.append(km.inertia_)
+def select_structural_representatives(
+    candidate_features,
+    candidate_indices,
+    n_targets,
+    *,
+    random_seed,
+    require_n_targets,
+):
+    """Cluster q=0.4--0.6 structures and return one medoid-like frame per cluster.
 
-    k_opt = KneeLocator(
-        range(1, 10), inertia, curve="convex", direction="decreasing"
-    ).elbow or 10
+    KMeans operates on the structural VCN feature vectors. Committor values are
+    used only for the preceding fixed-range filter and are never divided into
+    bins or windows.
+    """
+    candidate_features = np.asarray(candidate_features)
+    candidate_indices = np.asarray(candidate_indices, dtype=int)
+    if len(candidate_features) != len(candidate_indices):
+        raise ValueError("Candidate feature and frame-index counts do not match.")
+    if n_targets < 1:
+        raise ValueError("VCN.n_targets must be at least 1.")
+    if len(candidate_indices) < n_targets:
+        if require_n_targets:
+            raise ValueError(
+                f"Only {len(candidate_indices)} frames lie in the fixed "
+                f"{Q_SLICE_MIN:.1f}--{Q_SLICE_MAX:.1f} committor range; "
+                f"{n_targets} structural targets were required. Generate more samples."
+            )
+        return candidate_indices
+    if len(candidate_indices) == n_targets:
+        return candidate_indices
 
-    print(f"Optimal number of clusters (k): {k_opt}")
-    kmeans = KMeans(n_clusters=k_opt, random_state=42, n_init=10).fit(points)
-    centroids = kmeans.cluster_centers_
-    cluster_labels = kmeans.labels_
-
-    distances = cdist(points, centroids)
-    closest_frames = {
-        i: np.where(cluster_labels == i)[0][np.argmin(distances[cluster_labels == i, i])]
-        for i in range(k_opt)
-    }
-    farthest_frames = {
-        i: np.where(cluster_labels == i)[0][np.argmax(distances[cluster_labels == i, i])]
-        for i in range(k_opt)
-    }
-
-    selected_indices = list(closest_frames.values()) + list(farthest_frames.values())
-    np.savetxt(os.path.join(out_dir, "selected_indices.txt"), selected_indices, fmt="%d")
-    return selected_indices
+    kmeans = KMeans(
+        n_clusters=n_targets,
+        random_state=int(random_seed),
+        n_init=10,
+    ).fit(candidate_features)
+    distances = cdist(candidate_features, kmeans.cluster_centers_)
+    local_indices = []
+    for cluster in range(n_targets):
+        members = np.flatnonzero(kmeans.labels_ == cluster)
+        local_indices.append(members[np.argmin(distances[members, cluster])])
+    return candidate_indices[np.asarray(local_indices, dtype=int)]
 
 
 # =========================================================
@@ -147,7 +174,7 @@ def run_committor_slice(config, riteweight_config=None):
 
     label = config.get("label", "default_label")
     model_fn = config["model_fn"]
-    path0 = config.get("Sampling_path", "./")
+    path0 = config.get("sampling_path", config.get("Sampling_path", "./"))
     out_dir = config.get("slice_dir", "./output/")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -164,8 +191,10 @@ def run_committor_slice(config, riteweight_config=None):
     atomindex  = config.get("atomindex", [])
     atomselect = config.get("atomselect", None)
     cvs_to_plot = config.get("cvs_to_plot", None)
+    plot_projections = committor_projection_plotting_enabled(config)
     periodic = config.get("periodic", False)
-    q_var = config.get("q_variance", 0.1)
+    n_targets = int(config.get("n_targets", 20))
+    require_n_targets = bool(config.get("require_n_targets", True))
 
     # Load trajectory
     print(dcdfile, topfile, atomselect)
@@ -178,16 +207,44 @@ def run_committor_slice(config, riteweight_config=None):
     traj, labels = convert_to_zmatrix(dcdtraj, atomindex, use_all, pair_distance)
 
     cvs0 = labels if use_z_matrix else cvs_to_plot
-    model = torch.jit.load(model_fn)
+    model = torch.jit.load(model_fn, map_location=device).to(device)
+    model.eval()
     traj_values = traj[cvs0].to_numpy()
 
     q_values = calc_committors_sig(model, traj_values, periodic=periodic, device=device)
-    mask = (q_values > 0.5 - q_var) & (q_values < 0.5 + q_var)
+    if len(q_values) != dcdtraj.n_frames or not np.all(np.isfinite(q_values)):
+        raise ValueError("The committor model returned invalid values for generated frames.")
+    traj["committor"] = q_values
+    committor_path = os.path.join(out_dir, "committor.csv")
+    traj.to_csv(committor_path, index=False)
+    # Stage 1: one fixed committor interval. This is not split into sub-windows.
+    mask = (q_values >= Q_SLICE_MIN) & (q_values <= Q_SLICE_MAX)
+    if not np.any(mask):
+        raise ValueError(
+            "No generated frame lies in the fixed committor range "
+            f"[{Q_SLICE_MIN:.1f}, {Q_SLICE_MAX:.1f}]."
+        )
 
-    sliced_points = traj[mask]
+    candidate_indices = np.flatnonzero(mask)
+    candidate_points = traj.iloc[candidate_indices].copy()
+    candidate_points.to_csv(
+        os.path.join(out_dir, "committor_candidates.csv"), index=False
+    )
+
+    # Stage 2: cluster structural features from the slice and retain 20 (or the
+    # configured count) representatives. q itself is not a clustering feature.
+    selected_indices = select_structural_representatives(
+        traj_values[mask],
+        candidate_indices,
+        n_targets,
+        random_seed=config.get("random_seed", 42),
+        require_n_targets=require_n_targets,
+    )
+
+    sliced_points = traj.iloc[selected_indices].copy()
     sliced_points.to_csv(os.path.join(out_dir, "sliced.csv"), index=False)
 
-    selected_frames = dcdtraj[mask]
+    selected_frames = dcdtraj[selected_indices]
     slice_dir = os.path.join(out_dir, "sliced_frames")
     os.makedirs(slice_dir, exist_ok=True)
 
@@ -200,11 +257,27 @@ def run_committor_slice(config, riteweight_config=None):
     print(f"Saved {len(selected_frames)} sliced frames around q=0.5 to {out_dir}/sliced_frames.dcd and {slice_dir}/sliced_*.pdb.")
 
     # Plot committor maps (2D or 3×2D)
-    if cvs_to_plot is not None and (len(cvs_to_plot) == 2 or len(cvs_to_plot) == 3):
+    if (
+        plot_projections
+        and cvs_to_plot is not None
+        and all(cv in traj.columns for cv in cvs_to_plot)
+    ):
         plot_committor_pairs(traj, q_values, cvs_to_plot, out_dir, prefix="all")
-        plot_committor_pairs(sliced_points, q_values[mask], cvs_to_plot, out_dir, prefix="sliced")
+        plot_committor_pairs(
+            sliced_points, q_values[selected_indices], cvs_to_plot, out_dir,
+            prefix="sliced"
+        )
+    elif plot_projections and cvs_to_plot:
+        print("Warning: skipping committor plots because requested CVs are not model features.")
 
     print("Committor slicing completed successfully.")
+    return {
+        "trajectory": os.path.join(out_dir, "sliced_frames.dcd"),
+        "pdb_dir": slice_dir,
+        "committor_table": committor_path,
+        "count": len(selected_indices),
+        "candidate_count": int(mask.sum()),
+    }
 
 
 # =========================================================

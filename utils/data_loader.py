@@ -4,14 +4,14 @@ import mdtraj as md
 import os
 
 class ProteinDataset(Dataset):
-    def __init__(self, psf_path: str, dcd_path: str):
+    def __init__(self, topology_path: str, dcd_path: str):
         super().__init__()
-        if not os.path.exists(psf_path):
-            raise FileNotFoundError(f"PSF file not found: {psf_path}")
+        if not os.path.exists(topology_path):
+            raise FileNotFoundError(f"Topology file not found: {topology_path}")
         if not os.path.exists(dcd_path):
             raise FileNotFoundError(f"DCD file not found: {dcd_path}")
 
-        traj = md.load_dcd(dcd_path, top=psf_path)
+        traj = md.load_dcd(dcd_path, top=topology_path)
         if traj is None or traj.n_frames == 0:
             raise ValueError(f"Could not load trajectory: {dcd_path}")
 

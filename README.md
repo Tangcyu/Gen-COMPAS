@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+<body>
 
 <h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
 
 <p align="center">
 <img src="figures/scheme.png" alt="Gen-COMPAS workflow" width="500">
 </p>
-
-<p align="center">
 
 <p>
 This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and trajectory reweighting.
@@ -18,12 +17,13 @@ It combines <strong>diffusion models</strong> for structure generation with <str
 For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
 </p>
 
-<p>The RiteWeight implementation and its downstream weighted FEL projection are available through <code>run.py</code>.</p>
+<p>The RiteWeight implementation and its downstream weighted FEL projection are available as stages of <code>workflow.py</code>.</p>
 
 <h2>Overview</h2>
 
 <ul>
 <li>The main entry point is a single Python script that dispatches different stages of the workflow based on a YAML configuration file.</li>
+<li><code>workflow.py</code> manages cumulative iteration directories and the distinct bootstrap/committor-guided schedules.</li>
 <li>You can train models, perform inference, analyze trajectories, and perform reweighting with a unified interface.</li>
 </ul>
 
@@ -76,7 +76,7 @@ For computing statistical weights and estimating free energy landscapes, please 
 <tr>
 <td><code>riteweight</code></td>
 <td><code>run_riteweight()</code></td>
-<td>Compute trajectory weights and emit aligned VCN and diffusion training data.</td>
+<td>Compute trajectory weights and emit VCN data plus an RMSD-aligned diffusion training trajectory.</td>
 </tr>
 <tr>
 <td><code>fel_estimate</code></td>
@@ -86,18 +86,134 @@ For computing statistical weights and estimating free energy landscapes, please 
 </tbody>
 </table>
 
-<h2>Usage</h2>
+<h2>Workflow Usage</h2>
+
+<h3>Quick Start</h3>
+
+<p>After installation, <code>gen-compas</code> is the primary command. Always inspect the resolved schedule and paths before starting an expensive run:</p>
+
+<pre><code>gen-compas --config /path/to/workflow.yaml --iteration 0 1 2 --dry-run
+gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
+</code></pre>
+
+<p>A source checkout can also be run without installation. Direct execution works from a different working directory:</p>
+
+<pre><code>python /path/to/Gen-COMPAS/workflow.py \
+  --config ./workflow.yaml \
+  --iteration 0 1 2
+</code></pre>
+
+<p>Relative paths in the YAML file are interpreted from the directory where the command is launched. For reproducible runs, prefer absolute paths for external trajectories, topologies, NAMD templates, and executables.</p>
+
+<h3>Iteration Schedules and Data Flow</h3>
+
+<pre><code>Iteration 0:
+  train_diffusion -&gt; sample_diffusion -&gt; clustering -&gt; occupancy
+  -&gt; namd -&gt; riteweight -&gt; fel_estimate
+
+Iterations 1+:
+  train_diffusion -&gt; train_committor -&gt; sample_diffusion
+  -&gt; committor_slice -&gt; occupancy -&gt; namd -&gt; riteweight
+  -&gt; fel_estimate
+</code></pre>
+
+<p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage first retains generated frames with <code>0.4 &lt;= q &lt;= 0.6</code>, then clusters structural VCN features and selects <code>VCN.n_targets</code> representative frames.</p>
+
+<ul>
+<li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
+<li><code>Workflow.run_fel: false</code> removes <code>fel_estimate</code> from each schedule.</li>
+<li><code>Workflow.warm_start_diffusion: true</code> initializes iteration N diffusion weights from iteration N-1 <code>best_model.pt</code>. It does not restore optimizer, scheduler, or epoch state.</li>
+<li><code>Workflow.isolate_steps: true</code> runs regular stages in clean Python child processes, releasing GPU/native-library state between stages.</li>
+</ul>
+
+<p>The requested iteration numbers are the stopping control because no system-independent convergence criterion exists in the code. Inspect the committor slice, pathway/TMD diagnostics, and cumulative FEL before requesting another iteration.</p>
+
+<h3>Controlling a Run</h3>
+
+<pre><code># Continue after an interruption: skip completed stages and restart the failed/running stage
+gen-compas --config workflow.yaml --iteration 0 1 2 --resume
+
+# Pause after every successful stage; Enter continues and q stops cleanly
+gen-compas --config workflow.yaml --iteration 0 1 2 --stepwise
+
+# Run an inclusive subsection of an iteration
+gen-compas --config workflow.yaml --iteration 1 --start-at sample_diffusion
+gen-compas --config workflow.yaml --iteration 1 --start-at occupancy --stop-after namd
+
+# Run one incomplete stage, or force a completed stage to run again
+gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
+gen-compas --config workflow.yaml --iteration 1 --rerun_step sample_diffusion
+</code></pre>
+
+<p>Each iteration writes an effective configuration and manifest below <code>Workflow.root_dir</code>. If the process is interrupted, rerun the same iteration list with <code>--resume</code>; completed steps are skipped and the interrupted step is restarted from the beginning of that stage. The manifest is replaced atomically so it remains readable even if the process stops while its status is being updated.</p>
+
+<p>With <code>--stepwise</code>, the workflow pauses after every successfully completed stage so its output can be inspected. Press Enter to continue, or enter <code>q</code> to stop cleanly. A stopped stepwise run can be continued with the same iteration list plus <code>--resume --stepwise</code>.</p>
+
+<p><code>--run_step STEP</code> runs exactly one incomplete stage and skips it if the manifest already says <code>completed</code>. <code>--rerun_step STEP</code> forces that stage to run again and increments its attempt count. Neither command automatically reruns downstream stages. Both can be combined with <code>--stepwise</code> or <code>--dry-run</code>, but not with <code>--start-at</code> or <code>--stop-after</code>. The selected stage must belong to every requested iteration; for example, committor stages cannot run in iteration 0.</p>
+
+<p>Run <code>gen-compas --help</code> to print every accepted step name and the iteration-specific schedules.</p>
+
+<p>Sampling noise and diffusion-training epochs can be changed by iteration with sparse overrides. Omitted iterations retain <code>Generative.inference.noise_scale</code> and <code>Generative.training.epochs</code>, respectively:</p>
+
+<pre><code>Workflow:
+  root_dir: ./Iterations
+  warm_start_diffusion: true
+  isolate_steps: true
+  iteration_noise_scales:
+    0: 10.0
+    1: 5.0
+    2: 1.5
+  iteration_diffusion_epochs:
+    0: 50
+    1: 10
+    2: 10
+
+VCN:
+  n_targets: 20
+  require_n_targets: true
+  cvs_to_plot: [CV1, CV2]
+  plot_committor_projections: false
+</code></pre>
+
+<p><code>minimal.yaml</code> contains only system-specific or non-default values. Defaults live in <code>common/config.py</code>. The initial unbiased DCD and its matching topology are used only for iteration-0 diffusion training; no RiteWeight or Colvars trajectory is required before that training. The normal <code>Unbiased.A.conf</code>/<code>Unbiased.B.conf</code> templates provide the post-TMD trajectories consumed by the first RiteWeight step.</p>
+
+<p><code>Workflow.iteration_noise_scales</code> overrides <code>Generative.inference.noise_scale</code> only for the listed iterations. Likewise, <code>Workflow.iteration_diffusion_epochs</code> overrides <code>Generative.training.epochs</code>; omitted iterations use the Generative fallback values. Set <code>VCN.plot_committor_projections: true</code> only when committor maps on <code>cvs_to_plot</code> should be written during <code>committor_slice</code>.</p>
+
+<h3>Iteration Output Layout</h3>
+
+<pre><code>Iterations/
+  0th.Iteration/
+    effective_config.yaml
+    workflow_manifest.json
+    models/diffusion/
+    generated/
+    cluster_targets/
+    targets/
+    namd/
+    riteweight/
+  1st.Iteration/
+    models/diffusion/
+    models/vcn/
+    generated/
+    committor_slice/
+    targets/
+    namd/
+    riteweight/
+</code></pre>
+
+<p><code>effective_config.yaml</code> is the fully resolved per-iteration configuration used by every stage. <code>workflow_manifest.json</code> records stage status, timestamps, errors, and attempt counts and is the source of truth for <code>--resume</code>, <code>--run_step</code>, and <code>--rerun_step</code>.</p>
 
 <h3>Run a Specific Step</h3>
 
-<pre><code>python run.py --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
+<pre><code>gen-compas --config &lt;PATH_TO_CONFIG&gt; --iteration &lt;N&gt; --run_step &lt;STEP_NAME&gt;
 </code></pre>
 
 <p>RiteWeight and FEL projection use the corresponding sections in the unified <code>config.yaml</code>:</p>
 
-<pre><code>python run.py --step riteweight --config config.yaml
-python run.py --step fel_estimate --config config.yaml
-python run.py --step namd --config config.yaml
+<pre><code>gen-compas --config workflow.yaml --iteration 1 --run_step riteweight
+gen-compas --config workflow.yaml --iteration 1 --run_step fel_estimate
+gen-compas --config workflow.yaml --iteration 1 --run_step namd
+gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 </code></pre>
 
 <p>VCN training and committor slicing use the same fixed-anchor internal-coordinate implementation as RiteWeight. The workflow validates the atom selection and feature settings before either VCN step runs.</p>
@@ -115,12 +231,26 @@ python run.py --step namd --config config.yaml
 <li><code>fel_estimate</code></li>
 </ul>
 
+<p><code>clustering</code> belongs to iteration 0, while <code>train_committor</code> and <code>committor_slice</code> belong to iterations 1 and later. <code>fel_estimate</code> is available only when <code>Workflow.run_fel</code> is enabled. Invalid iteration/step combinations produce a command-line error before the stage starts.</p>
+
 <h2>Configuration File (config.yaml)</h2>
 
 <p>
 All parameters for model training, inference, and analysis are specified in a single YAML file.
 Below is a summary of each section.
 </p>
+
+<h3>Workflow Orchestration (Workflow)</h3>
+
+<ul>
+<li><strong>root_dir:</strong> Parent directory for ordinal iteration folders.</li>
+<li><strong>initial_diffusion_data:</strong> DCD and matching topology used to train iteration 0 diffusion.</li>
+<li><strong>initial_data_folders:</strong> Optional existing NAMD result folders included in cumulative RiteWeight input.</li>
+<li><strong>run_initial_unbiased, run_fel, warm_start_diffusion, isolate_steps:</strong> Optional schedule and runtime controls.</li>
+<li><strong>iteration_noise_scales, iteration_diffusion_epochs:</strong> Sparse per-iteration overrides.</li>
+</ul>
+
+<p>The workflow derives managed input/output paths for all stages and writes them to each iteration's <code>effective_config.yaml</code>. The generated <code>Workflow.runtime</code> subsection is internal and should not be added manually.</p>
 
 <h3>1. Generative Model (Generative)</h3>
 
@@ -141,10 +271,11 @@ Below is a summary of each section.
 
 <p><strong>Key fields:</strong></p>
 <ul>
-<li><strong>Sampling_path, topfile, atomselect:</strong> Input trajectory data.</li>
+<li><strong>sampling_path, topfile, atomselect:</strong> Input trajectory data.</li>
 <li><strong>epochs, learning_rate, num_layers, num_nodes:</strong> Training hyperparameters.</li>
 <li><strong>gendcdfile, model_fn, slice_dir:</strong> For slicing generated trajectories by committor values.</li>
 <li><strong>cvs_to_plot:</strong> For visualization (2D or 3D plots).</li>
+<li><strong>plot_committor_projections:</strong> Set to <code>true</code> to write committor maps during the workflow; the default is <code>false</code>.</li>
 </ul>
 
 <h3>3. Clustering (Clustering)</h3>
@@ -177,7 +308,7 @@ Below is a summary of each section.
 <ul>
 <li><strong>namd_path, template_path:</strong> NAMD executable and reusable input directory.</li>
 <li><strong>tmd_force_constant:</strong> Value inserted into the active <code>TMDk</code> directive.</li>
-<li><strong>protocols:</strong> Paired TMD and unbiased templates, such as A and B.</li>
+<li><strong>protocols:</strong> Initial-unbiased, TMD, and post-TMD unbiased templates for states A and B.</li>
 <li><strong>execution:</strong> Parallel-job limit, CPU/GPU mode, device slots, threads, and command templates.</li>
 </ul>
 
@@ -198,6 +329,8 @@ Compute statistical weights and aligned training artifacts using the
 <li><strong>colvars:</strong> CV retention and optional periodic encodings.</li>
 <li><strong>outputs:</strong> Torch VCN table and selected DCD/PDB files for diffusion training.</li>
 </ul>
+
+<p>RiteWeight records a numeric trajectory identifier and frame number in its VCN table. Lagged VCN samples are formed independently within each source trajectory, never across NAMD-job boundaries.</p>
 
 <h3>7. Weighted FEL Projection (FEL_estimate)</h3>
 
@@ -233,49 +366,84 @@ Increasing the sampling noise moves generated structures farther from the curren
 <li>PyTorch &gt;= 2.0</li>
 <li>MDTraj, MDAnalysis</li>
 <li>NumPy, SciPy, scikit-learn, pandas, matplotlib</li>
-<li>PyYAML, tqdm, kneed, tensorboard</li>
+<li>PyYAML, tqdm, tensorboard</li>
 </ul>
 
-<h2>Installation</h2>
+<h2>Gen-COMPAS Installation Guide</h2>
 
-<p>We recommend creating a fresh conda environment first so the Python version is explicit and reproducible. The package currently builds cleanly with <strong>Python 3.12.4</strong> in this repository, while the package metadata allows <strong>Python &gt;= 3.9</strong>.</p>
+<p>Gen-COMPAS requires Python 3.9 or newer. A fresh environment is strongly recommended because PyTorch, MDTraj, MDAnalysis, and their compiled dependencies must be mutually compatible. NAMD and Colvars are external applications: pip does not install them, so <code>NAMD.namd_path</code> and the NAMD template files must be supplied separately.</p>
 
-<p>To avoid the runtime import issues seen with <code>MDAnalysis</code> on some systems, create the environment from <strong>conda-forge</strong> and install the C++ runtime libraries up front:</p>
+<h3>Recommended Conda Installation</h3>
 
-<pre><code>conda create -n gen-compas -c conda-forge python=3.12.4 libstdcxx-ng libgcc-ng -y
+<p>The repository is tested with Python 3.12. On Linux, installing the C/C++ runtime libraries from conda-forge avoids common MDAnalysis and scientific-stack loader errors:</p>
+
+<p>If a specific CUDA-enabled PyTorch build is required, install the appropriate PyTorch build for the machine before running <code>python -m pip install .</code>; Gen-COMPAS requires <code>torch&gt;=2.0</code> but does not select a CUDA toolkit build on the user's behalf.</p>
+
+<pre><code>conda create -n gen-compas -c conda-forge \
+  python=3.12 libstdcxx-ng libgcc-ng pip -y
 conda activate gen-compas
-</code></pre>
 
-<p>Then clone the repository and install it with pip:</p>
-
-<pre><code>git clone https://github.com/Tangcyu/Gen-COMPAS.git
+git clone https://github.com/Tangcyu/Gen-COMPAS.git
 cd Gen-COMPAS
-pip install .
+python -m pip install .
 </code></pre>
 
-<p><strong>Note:</strong> Gen-COMPAS no longer requires <code>torch-scatter</code>. The package uses native PyTorch operations for the scatter-mean steps, which avoids binary compatibility issues with different PyTorch builds.</p>
+<p>For development, use an editable installation so source changes are immediately visible:</p>
 
-<p>This installs the <code>gen-compas</code> command-line entry point, so the workflow can be launched with:</p>
-
-<pre><code>gen-compas --step &lt;STEP_NAME&gt; --config &lt;PATH_TO_CONFIG&gt;
+<pre><code>python -m pip install -e .
 </code></pre>
 
-<p>If you want to verify the environment before running a workflow, the following checks should succeed without import errors:</p>
+<h3>Standard Virtual-Environment Installation</h3>
 
-<pre><code>python -c "import MDAnalysis; print('MDAnalysis import ok')"
-python -c "import run; print('run import ok')"
+<pre><code>python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
+</code></pre>
+
+<p>Gen-COMPAS does not require <code>torch-scatter</code>; scatter-mean operations use native PyTorch.</p>
+
+<h3>Installed Commands</h3>
+
+<p>Installation creates <code>gen-compas</code> as the primary workflow command. <code>gen-compas-workflow</code> is an equivalent alias. The legacy top-level <code>run.py</code> interface is archived and is not installed.</p>
+
+<pre><code>gen-compas --help
+gen-compas --config /path/to/workflow.yaml --iteration 0 1 2 --dry-run
+gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
+</code></pre>
+
+<h3>Verify the Installation</h3>
+
+<pre><code>python -c "import torch, mdtraj, MDAnalysis; print('scientific stack ok')"
+python -c "import workflow, common.runner; print('Gen-COMPAS import ok')"
 gen-compas --help
 </code></pre>
 
-<p>If you already created the environment and encounter a <code>CXXABI</code> or <code>libstdc++.so.6</code> error, repair it with:</p>
+<p>The help output should list <code>--run_step</code>, <code>--rerun_step</code>, all valid step names, and both iteration schedules.</p>
+
+<h3>Run Directly from a Source Checkout</h3>
+
+<p>Installation is recommended, but the workflow can be executed directly with the same environment. The path to <code>workflow.py</code> may be relative or absolute, and the command may be launched from a separate simulation directory:</p>
+
+<pre><code>python /path/to/Gen-COMPAS/workflow.py \
+  --config ./trpcage.workflow.yaml \
+  --iteration 0 \
+  --stepwise
+</code></pre>
+
+<p>Isolated stages automatically make the sibling Gen-COMPAS packages discoverable without changing the caller's working directory.</p>
+
+<h3>Troubleshooting and Wheel Installation</h3>
+
+<p>If an existing conda environment reports a <code>CXXABI</code> or <code>libstdc++.so.6</code> error, update the conda-forge runtime libraries:</p>
 
 <pre><code>conda install -n gen-compas -c conda-forge libstdcxx-ng libgcc-ng -y
 </code></pre>
 
-<p>You can also build and install the wheel manually if needed:</p>
+<p>To build and install a wheel locally:</p>
 
 <pre><code>python -m pip wheel --no-deps . -w dist
-pip install dist/gen_compas-0.1.0-py3-none-any.whl
+python -m pip install dist/Gen_COMPAS-*.whl
 </code></pre>
 
 <hr/>

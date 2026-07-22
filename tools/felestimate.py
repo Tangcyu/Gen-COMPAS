@@ -188,7 +188,7 @@ def save_projection(result: dict, output_dir: str, name: str):
             header=f"{cvs[0]} {cvs[1]} probability free_energy_kcal_per_mol",
         )
         fig, axis = plt.subplots()
-        contour = axis.contourf(grid_x, grid_y, free_energy, levels=20, cmap="viridis")
+        contour = axis.contourf(grid_x, grid_y, free_energy, levels=20, cmap="turbo")
         fig.colorbar(contour, ax=axis, label="Free energy (kcal/mol)")
         axis.set_xlabel(cvs[0])
         axis.set_ylabel(cvs[1])

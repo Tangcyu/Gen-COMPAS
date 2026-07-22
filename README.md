@@ -372,9 +372,32 @@ Increasing the sampling noise moves generated structures farther from the curren
 <li>PyYAML, tqdm, tensorboard</li>
 </ul>
 
+<p><strong>External simulation requirements:</strong></p>
+<ul>
+<li>NAMD with the bundled Colvars module. NAMD 3.0.2 or newer is recommended because 3.0.2 includes important Colvars fixes.</li>
+</ul>
+
 <h2>Gen-COMPAS Installation Guide</h2>
 
 <p>Gen-COMPAS requires Python 3.9 or newer. A fresh environment is strongly recommended because PyTorch, MDTraj, MDAnalysis, and their compiled dependencies must be mutually compatible. NAMD and Colvars are external applications: pip does not install them, so <code>NAMD.namd_path</code> and the NAMD template files must be supplied separately.</p>
+
+<h3>Install NAMD and Colvars</h3>
+
+<p>Download a precompiled NAMD build for the target CPU/GPU platform from the <a href="https://www.ks.uiuc.edu/Development/Download/download.cgi?PackageName=NAMD">official NAMD download page</a>, accept the NAMD license, and extract the archive. Colvars is included in NAMD and does not require a separate installation. The workflow expects templates that enable it with <code>colvars on</code> and point to a configuration file with <code>colvarsConfig</code>.</p>
+
+<p>Either add the directory containing <code>namd3</code> to <code>PATH</code>, or configure its absolute path in the workflow YAML:</p>
+
+<pre><code>NAMD:
+  namd_path: /absolute/path/to/NAMD/namd3
+  template_path: /absolute/path/to/NAMD_inputs
+</code></pre>
+
+<p>Confirm that the binary is executable before starting the workflow:</p>
+
+<pre><code>test -x /absolute/path/to/NAMD/namd3 &amp;&amp; echo "NAMD executable found"
+</code></pre>
+
+<p>On a local multicore workstation, NAMD runs configuration files as <code>namd3 +p&lt;threads&gt; &lt;configfile&gt;</code>. Gen-COMPAS builds this command from <code>NAMD.execution</code>; cluster-specific NAMD/Charm++ launch commands can be supplied there when needed. See the <a href="https://www.ks.uiuc.edu/Research/namd/3.0.2/ug/node93.html">official NAMD workstation instructions</a> and the <a href="https://colvars.github.io/">Colvars documentation</a> for platform and configuration details.</p>
 
 <h3>Recommended Conda Installation</h3>
 

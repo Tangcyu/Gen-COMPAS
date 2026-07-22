@@ -4,6 +4,7 @@ __pycache__/
 
 build/
 dist/
+helper/bin/
 *.egg-info/
 
 .venv/

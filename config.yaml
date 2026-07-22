@@ -109,9 +109,9 @@ Clustering:
   select_farthest: true                     # also include farthest frames along with cluster centers
 
 Occupancy:
-  pdb_dir        : "./input_pdbs"           # Directory containing PDB files to process
-  topology_file  : "system_withH.psf"       # Topology file for adding hydrogens or setting occupancy
-  pdb_file       : "reference_withH.pdb"    # Reference PDB file for adding hydrogens or setting occupancy
+  pdb_dir        : "./input_pdbs"           # Generated target PDBs without hydrogen atoms
+  topology_file  : "system_withH.psf"       # Reference topology WITH hydrogen atoms
+  pdb_file       : "reference_withH.pdb"    # Matching reference coordinates WITH hydrogen atoms
   output_dir     : "./output_pdbs"          # Directory to save processed PDB files
   add_hydrogens  : true                     # if false, only occupancy is set
   selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
@@ -167,7 +167,7 @@ RiteWeight:
   tag_regex: "\\.([AB])(?:\\.|$)"           # A/B protocol tag used for pairing
 
   io:
-    top: "PATH/TO/TOPOLOGY.psf"
+    topology: "PATH/TO/TOPOLOGY.psf"
     out: "./output_riteweight"
     stride: 1
 

@@ -59,7 +59,7 @@ def main():
             DEFAULT_CONFIG["RiteWeight"],
             {
                 "folders": [str(root)],
-                "io": {"top": str(top_path), "out": str(root / "out")},
+                "io": {"topology": str(top_path), "out": str(root / "out")},
                 "features": {
                     "internal_zmat": {
                         "atomselect": None,

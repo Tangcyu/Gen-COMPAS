@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from common.feature_contract import FEATURE_SCHEMA
+from common.config import normalize_config_aliases
 from tools.tensor_table import save_tensor_table
 
 try:
@@ -870,7 +871,8 @@ def write_diffusion_training_data(
 
 def load_yaml(path: str) -> Dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        loaded = yaml.safe_load(f)
+    return normalize_config_aliases({"RiteWeight": loaded})["RiteWeight"]
 
 def run_riteweight(cfg: Dict, check_mismatch: bool = False):
 
@@ -886,7 +888,7 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         colvars_pattern = f"*{cfg.get('match_colvars', '')}*.colvars.traj"
     tag_re = cfg.get("tag_regex", r"([AB])")
 
-    top_path = cfg["io"]["top"]
+    top_path = cfg["io"]["topology"]
     out = cfg["io"].get("out", "rw_out")
     stride = int(cfg["io"].get("stride", 1))
     output_cfg = cfg.get("outputs", {})

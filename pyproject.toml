@@ -18,6 +18,7 @@ dependencies = [
   "mdtraj",
   "numpy",
   "pandas",
+  "Pillow",
   "PyYAML",
   "scikit-learn",
   "scipy",
@@ -26,12 +27,16 @@ dependencies = [
   "tqdm",
 ]
 
+[project.optional-dependencies]
+gui-build = ["pyinstaller>=6"]
+
 [project.urls]
 Homepage = "https://github.com/Tangcyu/Gen-COMPAS"
 
 [project.scripts]
 gen-compas = "workflow:main"
 gen-compas-workflow = "workflow:main"
+gen-compas-config = "helper.config_helper:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -39,7 +44,8 @@ py-modules = ["workflow"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["common", "common.*", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
+include = ["common", "common.*", "figures", "helper", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
+"figures" = ["scheme.png"]

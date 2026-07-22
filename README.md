@@ -298,7 +298,8 @@ Below is a summary of each section.
 
 <p><strong>Parameters include:</strong></p>
 <ul>
-<li><strong>pdb_dir, topology_file, pdb_file:</strong> Input files and directories.</li>
+<li><strong>pdb_dir:</strong> Workflow-managed generated target PDBs, normally without hydrogen atoms.</li>
+<li><strong>topology_file, pdb_file:</strong> Matching reference topology and coordinate PDB that include hydrogen atoms and supply the complete atom set.</li>
 <li><strong>add_hydrogens:</strong> Whether to add hydrogens. <em>(Notice: Only for formatting, do NOT use hydrogens for TMD simulations)</em></li>
 <li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
 </ul>
@@ -436,6 +437,33 @@ python -m pip install .
 <pre><code>gen-compas --help
 gen-compas --config /path/to/workflow.yaml --iteration 0 1 2 --dry-run
 gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
+</code></pre>
+
+<h3>Graphical Configuration Helper</h3>
+
+<p>Launch the configuration helper to create a complete workflow YAML containing every supported setting:</p>
+
+<pre><code>gen-compas-config
+# Or directly from a source checkout:
+python helper/config_helper.py
+</code></pre>
+
+<p>The GUI can load an existing minimal or complete YAML, edit each top-level workflow section, browse for required files and directories, validate essential inputs, preview the result, and save a fully expanded YAML. Lists and sparse iteration overrides are entered using standard YAML syntax. Tkinter is required; verify that it is available with <code>python -m tkinter</code>.</p>
+
+<p>For high-DPI displays, increase the interface scaling with <code>gen-compas-config --ui-scale 1.25</code>. Nested groups are collapsed and created only when opened to reduce latency, particularly over remote desktop or X11 forwarding.</p>
+
+<p>The helper also supports headless generation and validation:</p>
+
+<pre><code>gen-compas-config --config minimal.yaml --output complete.workflow.yaml
+gen-compas-config --config complete.workflow.yaml --validate-only
+</code></pre>
+
+<p>A standalone, fast-starting application directory can be built with PyInstaller. The <code>onedir</code> format is intentional because it starts faster than a single-file bundle:</p>
+
+<pre><code>python -m pip install '.[gui-build]'
+python -m PyInstaller --clean --noconfirm \
+  --distpath helper/bin helper/config_helper.spec
+./helper/bin/gen-compas-config-helper/gen-compas-config-helper
 </code></pre>
 
 <h3>Verify the Installation</h3>

@@ -1,23 +1,6 @@
 import numpy as np
 
-
-Q_CENTER = 0.5
-DEFAULT_Q_VARIANCE = 0.1
-
-
-def committor_slice_bounds(q_variance=DEFAULT_Q_VARIANCE):
-    """Return the q=0.5 slice bounds for a validated half-width."""
-    if isinstance(q_variance, bool):
-        raise ValueError("VCN.q_variance must be a number between 0 and 0.5.")
-    try:
-        q_variance = float(q_variance)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "VCN.q_variance must be a number between 0 and 0.5."
-        ) from exc
-    if not np.isfinite(q_variance) or not 0 <= q_variance <= 0.5:
-        raise ValueError("VCN.q_variance must be a number between 0 and 0.5.")
-    return Q_CENTER - q_variance, Q_CENTER + q_variance
+from common.config import committor_slice_bounds
 
 
 def select_slice_targets(

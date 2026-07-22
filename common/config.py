@@ -159,7 +159,7 @@ DEFAULT_CONFIG = {
         "dcd_pattern": "*Unbiased.[AB].dcd",
         "colvars_pattern": "*Unbiased.[AB].colvars.traj",
         "tag_regex": r"\.([AB])(?:\.|$)",
-        "io": {"top": None, "out": "./output_riteweight", "stride": 1},
+        "io": {"topology": None, "out": "./output_riteweight", "stride": 1},
         "pairing": {"allow_skip_first_colvars": True, "strict": True},
         "features": {
             "mode": "internal_zmat",
@@ -222,6 +222,25 @@ DEFAULT_CONFIG = {
 }
 
 
+Q_CENTER = 0.5
+DEFAULT_Q_VARIANCE = 0.1
+
+
+def committor_slice_bounds(q_variance=DEFAULT_Q_VARIANCE):
+    """Return the q=0.5 slice bounds for a validated half-width."""
+    if isinstance(q_variance, bool):
+        raise ValueError("VCN.q_variance must be a number between 0 and 0.5.")
+    try:
+        q_variance = float(q_variance)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "VCN.q_variance must be a number between 0 and 0.5."
+        ) from exc
+    if not math.isfinite(q_variance) or not 0 <= q_variance <= 0.5:
+        raise ValueError("VCN.q_variance must be a number between 0 and 0.5.")
+    return Q_CENTER - q_variance, Q_CENTER + q_variance
+
+
 def deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict:
     """Recursively merge mappings; lists and scalar values replace defaults."""
     merged = deepcopy(dict(base))
@@ -233,6 +252,27 @@ def deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict:
     return merged
 
 
+def normalize_config_aliases(config: Mapping[str, Any]) -> dict:
+    """Migrate supported legacy keys to their canonical configuration names."""
+    normalized = deepcopy(dict(config))
+    riteweight = normalized.get("RiteWeight")
+    if isinstance(riteweight, Mapping):
+        riteweight = deepcopy(dict(riteweight))
+        normalized["RiteWeight"] = riteweight
+        io_config = riteweight.get("io")
+        if isinstance(io_config, Mapping):
+            io_config = deepcopy(dict(io_config))
+            riteweight["io"] = io_config
+            if "top" in io_config:
+                legacy = io_config.pop("top")
+                if "topology" in io_config and io_config["topology"] != legacy:
+                    raise ValueError(
+                        "RiteWeight.io defines conflicting 'top' and 'topology' values."
+                    )
+                io_config.setdefault("topology", legacy)
+    return normalized
+
+
 def load_config(path: Union[str, Path]) -> dict:
     """Load a user YAML file and fill every omitted default value."""
     config_path = Path(path)
@@ -242,7 +282,7 @@ def load_config(path: Union[str, Path]) -> dict:
         user_config = yaml.safe_load(handle) or {}
     if not isinstance(user_config, Mapping):
         raise TypeError("The top level of the configuration must be a mapping.")
-    return deep_merge(DEFAULT_CONFIG, user_config)
+    return deep_merge(DEFAULT_CONFIG, normalize_config_aliases(user_config))
 
 
 def ordinal(value: int) -> str:
@@ -409,7 +449,7 @@ def resolve_iteration_config(config: Mapping[str, Any], iteration: int) -> dict:
     occupancy = resolved["Occupancy"]
     occupancy.update(pdb_dir=str(target_source), output_dir=str(paths["targets"]))
     if occupancy.get("topology_file") is None:
-        occupancy["topology_file"] = resolved["RiteWeight"]["io"]["top"]
+        occupancy["topology_file"] = resolved["RiteWeight"]["io"]["topology"]
 
     resolved["NAMD"]["output_dir"] = str(paths["namd"])
     resolved["NAMD"]["targets"]["path"] = str(paths["targets"])

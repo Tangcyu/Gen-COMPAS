@@ -88,6 +88,8 @@ For computing statistical weights and estimating free energy landscapes, please 
 
 <h2>Workflow Usage</h2>
 
+<p><strong>Important for new systems:</strong> Use Gen-COMPAS stepwise when setting up a new system. Do not run the full workflow blindly to generate trajectories. Instead, inspect the configuration and dry-run schedule first, then run and check each stage before continuing. In particular, verify generated structures, committor slices, clustering/target selection, TMD behavior, and trajectory diagnostics. This helps catch generation or simulation errors caused by unsuitable parameter choices before they propagate to later calculations.</p>
+
 <h3>Quick Start</h3>
 
 <p>After installation, <code>gen-compas</code> is the primary command. Always inspect the resolved schedule and paths before starting an expensive run:</p>
@@ -236,12 +238,28 @@ gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 
 <p><code>clustering</code> belongs to iteration 0, while <code>train_committor</code> and <code>committor_slice</code> belong to iterations 1 and later. <code>fel_estimate</code> is available only when <code>Workflow.run_fel</code> is enabled. Invalid iteration/step combinations produce a command-line error before the stage starts.</p>
 
-<h2>Configuration File (config.yaml)</h2>
+<h2 id="configuration-file-configyaml">Configuration File (config.yaml)</h2>
 
 <p>
 All parameters for model training, inference, and analysis are specified in a single YAML file.
 Below is a summary of each section.
 </p>
+
+<h3>Generating a YAML File with the GUI</h3>
+
+<p>The Gen-COMPAS configuration GUI can be used to create the YAML file for subsequent calculations. It can generate a complete configuration from scratch or load an existing minimal/complete YAML, guide the user through the supported sections, browse for input files and directories, validate essential inputs, preview the result, and save the final YAML. The saved file is then passed to the workflow with <code>gen-compas --config &lt;CONFIG.yaml&gt;</code>.</p>
+
+<pre><code># Launch the interactive configuration helper
+gen-compas-config
+
+# Generate a complete YAML from an existing minimal configuration
+gen-compas-config --config minimal.yaml --output complete.workflow.yaml
+
+# Validate a generated or edited YAML without running calculations
+gen-compas-config --config complete.workflow.yaml --validate-only
+</code></pre>
+
+<p>Tkinter is required for the interactive GUI. Lists and sparse iteration overrides should be entered using standard YAML syntax. The GUI is intended to simplify configuration generation; users should still inspect the generated YAML and perform a dry run before starting expensive calculations.</p>
 
 <h3>Workflow Orchestration (Workflow)</h3>
 
@@ -441,31 +459,9 @@ gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
 
 <h3>Graphical Configuration Helper</h3>
 
-<p>Launch the configuration helper to create a complete workflow YAML containing every supported setting:</p>
+<p>An optional graphical configuration helper is installed with Gen-COMPAS and can be used to generate YAML files for later workflow calculations. See <a href="#configuration-file-configyaml">Configuration File (config.yaml)</a> for its usage and validation options.</p>
 
 <pre><code>gen-compas-config
-# Or directly from a source checkout:
-python helper/config_helper.py
-</code></pre>
-
-<p>The GUI can load an existing minimal or complete YAML, edit each top-level workflow section, browse for required files and directories, validate essential inputs, preview the result, and save a fully expanded YAML. Lists and sparse iteration overrides are entered using standard YAML syntax. Tkinter is required; verify that it is available with <code>python -m tkinter</code>.</p>
-
-<p>Titles and button captions are rendered with Pillow/FreeType at four times their target resolution and downsampled into transparent images. They therefore remain anti-aliased even when the installed Linux Tk library was built without Xft. Ordinary field labels, entry text, menus, and the status line continue to use native Tk fonts and may remain jagged with a <code>no-xft</code> Tk build. Rendered images are cached so that changing sections does not repeatedly rasterize the same text.</p>
-
-<p>The helper uses automatic display-DPI detection. If the operating-system scaling is still too small, apply an additional multiplier with <code>gen-compas-config --ui-scale 1.25</code>. Nested groups are collapsed and created only when opened to reduce latency, particularly over remote desktop or X11 forwarding.</p>
-
-<p>The helper also supports headless generation and validation:</p>
-
-<pre><code>gen-compas-config --config minimal.yaml --output complete.workflow.yaml
-gen-compas-config --config complete.workflow.yaml --validate-only
-</code></pre>
-
-<p>A standalone, fast-starting application directory can be built with PyInstaller. The build includes the regular and bold DejaVu Sans font files used for rendered titles and buttons, so this workaround does not depend on fonts installed on the target computer. The <code>onedir</code> format is intentional because it starts faster than a single-file bundle:</p>
-
-<pre><code>python -m pip install '.[gui-build]'
-python -m PyInstaller --clean --noconfirm \
-  --distpath helper/bin helper/config_helper.spec
-./helper/bin/gen-compas-config-helper/gen-compas-config-helper
 </code></pre>
 
 <h3>Verify the Installation</h3>

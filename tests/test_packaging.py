@@ -22,3 +22,13 @@ def test_config_helper_logo_is_available_for_packaging():
     assert (PROJECT_ROOT / "helper" / "config_helper.spec").is_file()
     assert (PROJECT_ROOT / "figures" / "__init__.py").is_file()
     assert (PROJECT_ROOT / "figures" / "scheme.png").is_file()
+
+
+def test_config_helper_packages_fonts_for_rendered_titles_and_buttons():
+    spec = (PROJECT_ROOT / "helper" / "config_helper.spec").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"DejaVuSans.ttf"' in spec
+    assert '"DejaVuSans-Bold.ttf"' in spec
+    assert 'font_datas.append((str(font_path), "fonts"))' in spec

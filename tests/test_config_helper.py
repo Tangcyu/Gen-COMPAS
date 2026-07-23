@@ -4,14 +4,38 @@ import pytest
 import yaml
 
 from helper.config_helper import (
+    RENDER_FONT_PATHS,
     complete_config,
     get_tk_font_backend,
     load_complete_config,
     parse_field_value,
+    render_supersampled_text,
     save_complete_config,
     scaled_font_pixel_size,
     validate_workflow_config,
 )
+
+
+def test_render_font_lookup_prefers_packaged_regular_and_bold_fonts():
+    assert RENDER_FONT_PATHS["regular"][0].name == "DejaVuSans.ttf"
+    assert RENDER_FONT_PATHS["bold"][0].name == "DejaVuSans-Bold.ttf"
+    assert RENDER_FONT_PATHS["regular"][0].parent.name == "fonts"
+
+
+def test_supersampled_title_render_has_transparent_antialiased_edges():
+    from PIL import ImageFont
+
+    source = next(path for path in RENDER_FONT_PATHS["bold"] if path.is_file())
+    font = ImageFont.truetype(str(source), 80)
+    rendered = render_supersampled_text(
+        "Gen-COMPAS", font, "#12344d", supersample=4
+    )
+
+    assert rendered.mode == "RGBA"
+    assert rendered.width > rendered.height > 1
+    alpha_values = set(rendered.getchannel("A").getdata())
+    assert 0 in alpha_values
+    assert len(alpha_values) > 2
 
 
 def test_complete_config_expands_defaults_and_preserves_overrides():

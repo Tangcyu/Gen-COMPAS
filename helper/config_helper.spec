@@ -1,42 +1,38 @@
-# Build a fast-starting Linux/macOS onedir application with:
-#   # On Linux this must print xft; PyInstaller bundles this Python's Tk library.
-#   python -c 'import tkinter as tk; r=tk.Tk(); print(r.tk.call("tk::pkgconfig", "get", "fontsystem")); r.destroy()'
+# Build a fast-starting Linux onedir application with:
 #   python -m PyInstaller --clean --noconfirm --distpath helper/bin helper/config_helper.spec
 
 from pathlib import Path
-import sys
 
 
 project_root = Path(SPECPATH).parent
+font_search_roots = (
+    Path("/usr/share/fonts/dejavu-sans-fonts"),
+    Path("/usr/share/fonts/truetype/dejavu"),
+)
+font_datas = []
+for font_name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
+    font_path = next(
+        (root / font_name for root in font_search_roots if (root / font_name).is_file()),
+        None,
+    )
+    if font_path is None:
+        raise SystemExit(
+            f"Could not find {font_name}; install the DejaVu Sans font package "
+            "before building the configuration helper."
+        )
+    font_datas.append((str(font_path), "fonts"))
 
 a = Analysis(
     [str(project_root / "helper" / "config_helper.py")],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[(str(project_root / "figures" / "scheme.png"), "figures")],
+    datas=[(str(project_root / "figures" / "scheme.png"), "figures"), *font_datas],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
     excludes=["numpy", "pandas", "torch", "matplotlib", "scipy", "sklearn"],
     noarchive=False,
 )
-
-# A Linux executable cannot repair a legacy no-Xft Tk after packaging.  Refuse
-# that build instead of silently producing an application with jagged fonts.
-if sys.platform.startswith("linux"):
-    tk_libraries = [
-        Path(source)
-        for destination, source, _kind in a.binaries
-        if Path(destination).name.startswith(("libtk8", "libtk9"))
-    ]
-    if not tk_libraries:
-        raise SystemExit("Could not find Tk while verifying Xft support.")
-    if not any(b"libXft.so" in library.read_bytes() for library in tk_libraries):
-        raise SystemExit(
-            "Refusing to build with a no-Xft Tk library. Use a Python/Tk "
-            "installation linked to libXft and run PyInstaller again."
-        )
-
 pyz = PYZ(a.pure)
 
 exe = EXE(

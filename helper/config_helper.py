@@ -24,6 +24,25 @@ from common.config import (
 
 
 LOGO_PATH = PROJECT_ROOT / "figures" / "scheme.png"
+RENDER_FONT_PATHS = {
+    "regular": (
+        PROJECT_ROOT / "fonts" / "DejaVuSans.ttf",
+        Path("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path(sys.prefix) / "share" / "fonts" / "truetype" / "dejavu" / "DejaVuSans.ttf",
+    ),
+    "bold": (
+        PROJECT_ROOT / "fonts" / "DejaVuSans-Bold.ttf",
+        Path("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        Path(sys.prefix)
+        / "share"
+        / "fonts"
+        / "truetype"
+        / "dejavu"
+        / "DejaVuSans-Bold.ttf",
+    ),
+}
 
 
 REQUIRED_FIELDS = {
@@ -324,6 +343,39 @@ def enable_native_dpi_awareness() -> None:
             pass
 
 
+def render_supersampled_text(
+    text: str,
+    font: Any,
+    color: str,
+    *,
+    padding: tuple[int, int] = (2, 1),
+    supersample: int = 4,
+) -> Any:
+    """Render anti-aliased RGBA text and reduce it to its target pixel size."""
+    from PIL import Image, ImageDraw
+
+    probe = Image.new("L", (1, 1))
+    bounds = ImageDraw.Draw(probe).textbbox((0, 0), text, font=font)
+    pad_x = padding[0] * supersample
+    pad_y = padding[1] * supersample
+    width = max(1, bounds[2] - bounds[0] + 2 * pad_x)
+    height = max(1, bounds[3] - bounds[1] + 2 * pad_y)
+    rendered = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    ImageDraw.Draw(rendered).text(
+        (pad_x - bounds[0], pad_y - bounds[1]),
+        text,
+        font=font,
+        fill=color,
+    )
+    return rendered.resize(
+        (
+            max(1, round(width / supersample)),
+            max(1, round(height / supersample)),
+        ),
+        Image.Resampling.LANCZOS,
+    )
+
+
 def launch_gui(
     initial_config: Mapping[str, Any],
     source_path: str | None = None,
@@ -334,7 +386,7 @@ def launch_gui(
     try:
         import tkinter as tk
         from tkinter import filedialog, font as tkfont, messagebox, ttk
-        from PIL import Image, ImageTk
+        from PIL import Image, ImageFont, ImageTk
         import threading
     except ImportError as exc:  # pragma: no cover - depends on system Python build
         raise RuntimeError(
@@ -430,6 +482,8 @@ def launch_gui(
             self.logo_image = None
             self._prepared_logo = None
             self._logo_error = None
+            self.text_image_cache = {}
+            self.pillow_font_cache = {}
             self.status = tk.StringVar(value="Ready")
             self.root.title("Gen-COMPAS Configuration Helper")
             current_scaling = float(self.root.tk.call("tk", "scaling"))
@@ -446,13 +500,10 @@ def launch_gui(
             self.root.minsize(
                 round(960 * self.layout_scale), round(640 * self.layout_scale)
             )
-            self.font_backend = get_tk_font_backend(self.root)
             self._configure_styles()
             self._build_shell()
             self._rebuild_navigation()
             self._show_section(next(iter(self.config)), store_current=False)
-            if sys.platform.startswith("linux") and self.font_backend != "xft":
-                self._show_font_backend_warning()
 
         def _font_size(self, points):
             return scaled_font_pixel_size(points, self.tk_scaling, self.ui_scale)
@@ -465,6 +516,79 @@ def launch_gui(
                 size=self._font_size(points),
                 weight=weight,
             )
+
+        def _pillow_font(self, points, *, bold=False, supersample=4):
+            pixel_size = abs(self._font_size(points)) * supersample
+            cache_key = ("bold" if bold else "regular", pixel_size)
+            cached = self.pillow_font_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            weight = cache_key[0]
+            sources = [path for path in RENDER_FONT_PATHS[weight] if path.is_file()]
+            sources.append(
+                "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+            )
+            for source in sources:
+                try:
+                    font = ImageFont.truetype(str(source), pixel_size)
+                except OSError:
+                    continue
+                self.pillow_font_cache[cache_key] = font
+                return font
+            return None
+
+        def _render_text_image(
+            self,
+            text,
+            points,
+            color,
+            *,
+            bold=False,
+            padding=(2, 1),
+        ):
+            cache_key = (text, points, color, bold, padding, self.effective_scaling)
+            cached = self.text_image_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            supersample = 4
+            font = self._pillow_font(
+                points, bold=bold, supersample=supersample
+            )
+            if font is None:
+                return None
+            rendered = render_supersampled_text(
+                text,
+                font,
+                color,
+                padding=padding,
+                supersample=supersample,
+            )
+            photo = ImageTk.PhotoImage(rendered, master=self.root)
+            self.text_image_cache[cache_key] = photo
+            return photo
+
+        def _set_rendered_text(
+            self,
+            widget,
+            text,
+            points,
+            color,
+            *,
+            bold=False,
+            fallback_font=None,
+        ):
+            image = self._render_text_image(
+                text, points, color, bold=bold
+            )
+            if image is None:
+                options = {"text": text, "image": ""}
+                if fallback_font is not None and "font" in widget.keys():
+                    options["font"] = fallback_font
+                widget.configure(**options)
+                return
+            widget.configure(text="", image=image, compound="center")
 
         def _configure_styles(self):
             style = ttk.Style(self.root)
@@ -548,18 +672,6 @@ def launch_gui(
             style.configure("TCombobox", padding=5)
             style.configure("TCheckbutton", background="#ffffff")
 
-        def _show_font_backend_warning(self):
-            message = (
-                f"Tk font backend: {self.font_backend}. Anti-aliased high-resolution "
-                "fonts on Linux require an Xft-enabled Tk build. Run this helper "
-                "with a Python/Tk installation linked to libXft, then rebuild the "
-                "standalone application with that same Python."
-            )
-            self.status.set(message)
-            self.root.after_idle(
-                lambda: messagebox.showwarning("Low-resolution Tk fonts", message)
-            )
-
         def _build_shell(self):
             header = tk.Frame(self.root, background="#ffffff", padx=18, pady=10)
             header.pack(fill="x")
@@ -567,20 +679,33 @@ def launch_gui(
             self.logo_label.pack(side="left", padx=(0, 16))
             title_block = tk.Frame(header, background="#ffffff")
             title_block.pack(side="left", fill="y")
-            tk.Label(
+            title_label = tk.Label(
                 title_block,
-                text="Gen-COMPAS",
                 background="#ffffff",
-                foreground="#12344d",
-                font=self.fonts["hero"],
-            ).pack(anchor="w", pady=(12, 0))
-            tk.Label(
+                borderwidth=0,
+            )
+            self._set_rendered_text(
+                title_label,
+                "Gen-COMPAS",
+                23,
+                "#12344d",
+                bold=True,
+                fallback_font=self.fonts["hero"],
+            )
+            title_label.pack(anchor="w", pady=(12, 0))
+            subtitle_label = tk.Label(
                 title_block,
-                text="Workflow Configuration Helper",
                 background="#ffffff",
-                foreground="#607d8b",
-                font=self.fonts["subtitle"],
-            ).pack(anchor="w")
+                borderwidth=0,
+            )
+            self._set_rendered_text(
+                subtitle_label,
+                "Workflow Configuration Helper",
+                12,
+                "#607d8b",
+                fallback_font=self.fonts["subtitle"],
+            )
+            subtitle_label.pack(anchor="w")
             self.root.after_idle(self._load_logo)
 
             toolbar = ttk.Frame(self.root, padding=(14, 10, 14, 8))
@@ -591,15 +716,29 @@ def launch_gui(
                 ("Validate", self.validate),
                 ("Preview", self.preview),
             ):
-                ttk.Button(toolbar, text=label, command=command).pack(
-                    side="left", padx=(0, 6)
+                button = ttk.Button(toolbar, command=command)
+                self._set_rendered_text(
+                    button,
+                    label,
+                    11,
+                    "#263238",
+                    fallback_font=self.fonts["button"],
                 )
-            ttk.Button(
+                button.pack(side="left", padx=(0, 6))
+            save_button = ttk.Button(
                 toolbar,
-                text="Save YAML",
                 command=self.save_yaml,
                 style="Accent.TButton",
-            ).pack(side="left", padx=(2, 6))
+            )
+            self._set_rendered_text(
+                save_button,
+                "Save YAML",
+                11,
+                "#ffffff",
+                bold=True,
+                fallback_font=self.fonts["button_bold"],
+            )
+            save_button.pack(side="left", padx=(2, 6))
             ttk.Label(
                 toolbar,
                 text="Fields marked * are required for a complete workflow.",
@@ -663,20 +802,26 @@ def launch_gui(
             for child in self.navigation.winfo_children():
                 child.destroy()
             self.nav_buttons.clear()
-            tk.Label(
+            navigation_title = tk.Label(
                 self.navigation,
-                text="SECTIONS",
                 anchor="w",
                 background="#e8edf1",
-                foreground="#607d8b",
-                font=self.fonts["help_bold"],
                 padx=10,
                 pady=8,
-            ).pack(fill="x")
+            )
+            self._set_rendered_text(
+                navigation_title,
+                "SECTIONS",
+                10,
+                "#607d8b",
+                bold=True,
+                fallback_font=self.fonts["help_bold"],
+            )
+            navigation_title.pack(fill="x")
             for section in self.config:
+                section_text = str(section).replace("_", " ")
                 button = tk.Button(
                     self.navigation,
-                    text=str(section).replace("_", " "),
                     command=lambda name=section: self._show_section(name),
                     anchor="w",
                     relief="flat",
@@ -689,6 +834,13 @@ def launch_gui(
                     foreground="#263238",
                     font=self.fonts["button"],
                     cursor="hand2",
+                )
+                self._set_rendered_text(
+                    button,
+                    section_text,
+                    11,
+                    "#263238",
+                    fallback_font=self.fonts["button"],
                 )
                 button.pack(fill="x", pady=1)
                 self.nav_buttons[str(section)] = button
@@ -718,7 +870,14 @@ def launch_gui(
                 button.configure(
                     background="#ffffff" if selected else "#e8edf1",
                     foreground="#176b87" if selected else "#263238",
-                    font=(
+                )
+                self._set_rendered_text(
+                    button,
+                    name.replace("_", " "),
+                    11,
+                    "#176b87" if selected else "#263238",
+                    bold=selected,
+                    fallback_font=(
                         self.fonts["button_bold"]
                         if selected
                         else self.fonts["button"]
@@ -727,11 +886,20 @@ def launch_gui(
 
             heading = ttk.Frame(self.form_host, padding=(20, 16, 20, 8), style="Card.TFrame")
             heading.pack(fill="x")
-            ttk.Label(
+            section_title = tk.Label(
                 heading,
-                text=section.replace("_", " "),
-                style="SectionTitle.TLabel",
-            ).pack(anchor="w")
+                background="#ffffff",
+                borderwidth=0,
+            )
+            self._set_rendered_text(
+                section_title,
+                section.replace("_", " "),
+                20,
+                "#12344d",
+                bold=True,
+                fallback_font=self.fonts["section"],
+            )
+            section_title.pack(anchor="w")
             ttk.Separator(self.form_host, orient="horizontal").pack(fill="x")
             scroll = ScrollableFrame(self.form_host)
             scroll.pack(fill="both", expand=True)
@@ -758,6 +926,7 @@ def launch_gui(
                     and not (isinstance(expected, Mapping) and not expected)
                 )
                 if nested:
+                    collapsed_text = f"+  {str(key).replace('_', ' ')}"
                     container = ttk.Frame(parent, style="Card.TFrame")
                     container.grid(
                         row=row,
@@ -769,7 +938,6 @@ def launch_gui(
                     )
                     header = tk.Button(
                         container,
-                    text=f"+  {str(key).replace('_', ' ')}",
                         anchor="w",
                         relief="flat",
                         borderwidth=0,
@@ -781,6 +949,14 @@ def launch_gui(
                         padx=2,
                         pady=8,
                         cursor="hand2",
+                    )
+                    self._set_rendered_text(
+                        header,
+                        collapsed_text,
+                        13,
+                        "#176b87",
+                        bold=True,
+                        fallback_font=self.fonts["group"],
                     )
                     header.pack(fill="x")
                     group = ttk.Frame(
@@ -800,8 +976,13 @@ def launch_gui(
                     ):
                         if toggle_state["expanded"]:
                             content.pack_forget()
-                            button.configure(
-                                text=f"+  {child_key.replace('_', ' ')}"
+                            self._set_rendered_text(
+                                button,
+                                f"+  {child_key.replace('_', ' ')}",
+                                13,
+                                "#176b87",
+                                bold=True,
+                                fallback_font=self.fonts["group"],
                             )
                             toggle_state["expanded"] = False
                             return
@@ -809,7 +990,14 @@ def launch_gui(
                             self._add_mapping(content, child_values, child_path)
                             toggle_state["loaded"] = True
                         content.pack(fill="x")
-                        button.configure(text=f"-  {child_key.replace('_', ' ')}")
+                        self._set_rendered_text(
+                            button,
+                            f"-  {child_key.replace('_', ' ')}",
+                            13,
+                            "#176b87",
+                            bold=True,
+                            fallback_font=self.fonts["group"],
+                        )
                         toggle_state["expanded"] = True
 
                     header.configure(command=toggle)
@@ -873,11 +1061,20 @@ def launch_gui(
                     else "directory" if dotted in DIRECTORY_FIELDS else None
                 )
                 if browse_kind:
-                    ttk.Button(
+                    browse_button = ttk.Button(
                         parent,
-                        text="Browse...",
                         command=lambda e=editor, kind=browse_kind: self.browse(e, kind),
-                    ).grid(row=row, column=2, sticky="w", padx=(6, 3), pady=4)
+                    )
+                    self._set_rendered_text(
+                        browse_button,
+                        "Browse...",
+                        11,
+                        "#263238",
+                        fallback_font=self.fonts["button"],
+                    )
+                    browse_button.grid(
+                        row=row, column=2, sticky="w", padx=(6, 3), pady=4
+                    )
 
             self.fields[dotted] = editor
             help_text = FIELD_HELP.get(dotted)

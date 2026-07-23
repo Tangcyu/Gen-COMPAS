@@ -1,0 +1,30 @@
+colvarsTrajFrequency 100
+colvar {
+  name phi
+  dihedral {
+    group1 {atomNumbers {5}}
+    group2 {atomNumbers {7}}
+    group3 {atomNumbers {9}}
+    group4 {atomNumbers {15}}
+  }
+}
+
+colvar {
+  name psi
+  dihedral {
+    group1 {atomNumbers {7}}
+    group2 {atomNumbers {9}}
+    group3 {atomNumbers {15}}
+    group4 {atomNumbers {17}}
+  }
+}
+
+colvar {
+  name theta
+  dihedral {
+    group1 {atomNumbers {6}}
+    group2 {atomNumbers {5}}
+    group3 {atomNumbers {7}}
+    group4 {atomNumbers {9}}
+  }
+}

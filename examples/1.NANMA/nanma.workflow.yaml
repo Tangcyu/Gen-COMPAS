@@ -1,0 +1,153 @@
+# Gen-COMPAS workflow configuration for NANMA.
+# Run from this directory, for example:
+#   gen-compas --config nanma.workflow.yaml --iteration 0 1 2 3 4 --stepwise
+#
+# The initial trajectory is intentionally not bundled in the public example.
+# Provide the two files below before running iteration 0.
+
+Workflow:
+  root_dir: "./workflow_output"
+  initial_data_folders: []
+  initial_diffusion_data:
+    dcd_path: "./input/alad_unbiased_noh.dcd"
+    topology_path: "./input/alad_noh.psf"
+  run_initial_unbiased: false
+  run_fel: true
+  warm_start_diffusion: true
+  isolate_steps: true
+  # Checked against the active source sampling/0.yaml files and generated
+  # outputs for iterations 0--4. Auxiliary N2 trials are retained in source
+  # but were not the selected generated branch for iterations 1, 3, or 4.
+  iteration_noise_scales: {0: 2.0, 1: 4.0, 2: 2.0, 3: 1.5, 4: 4.0}
+  iteration_diffusion_epochs: {0: 50, 1: 50, 2: 20, 3: 10, 4: 10}
+
+Generative:
+  device: "cuda:0"
+  random_seed: 42
+  model:
+    node_feature_dim: 64
+    time_embedding_dim: 128
+    hidden_dim: 128
+    num_schnet_layers: 4
+    num_gat_layers: 2
+    residue_attn_heads: 4
+    k_neighbors: 16
+  diffusion:
+    timesteps: 200
+    beta_schedule: "cosine"
+  training:
+    epochs: 50
+    batch_size: 64
+    lr: 1.0e-4
+    weight_decay: 1.0e-6
+    grad_clip: 1.0
+    num_workers: 4
+    save_interval: 50
+  inference:
+    num_samples: 1000
+    sample_batch: 100
+    noise_scale: 2.0
+
+VCN:
+  device: "cuda:0"
+  atomselect: "protein and name CA"
+  stride: 1
+  time_shift: 2
+  cvs: ["phi", "psi", "theta"]
+  cvs_to_plot: ["phi", "psi"]
+  epochs: 500
+  learning_rate: 1.0e-4
+  patience: 20
+  num_layers: 4
+  num_nodes: 64
+  k: 1.0
+  q_variance: 0.1
+  n_targets: 20
+  require_n_targets: true
+
+Clustering:
+  atom_selection: "protein and name CA"
+  n_clusters: 10
+  n_per_cluster: 1
+  max_k: 20
+  select_farthest: true
+
+Occupancy:
+  topology_file: "./NAMD_inputs/TOP_files/alad.psf"
+  pdb_file: "./NAMD_inputs/TOP_files/alad.pdb"
+  add_hydrogens: true
+  selection: "protein and name CA"
+
+NAMD:
+  namd_path: "namd3"
+  template_path: "./NAMD_inputs"
+  tmd_force_constant: 500.0
+  existing_job_policy: "error"
+  protocols:
+    - name: "A"
+      tmd_template: "TMD.A.conf"
+      unbiased_template: "Unbiased.A.conf"
+      initial_unbiased_template: "Unbiased.A.conf"
+    - name: "B"
+      tmd_template: "TMD.B.conf"
+      unbiased_template: "Unbiased.B.conf"
+      initial_unbiased_template: "Unbiased.B.conf"
+  phases:
+    tmd: true
+    unbiased: true
+  execution:
+    device: "cpu"
+    parallel_jobs: 1
+    cpu:
+      threads_per_job: 4
+
+RiteWeight:
+  dcd_pattern: "*Unbias.[AB].dcd"
+  colvars_pattern: "*Unbias.[AB].colvars.traj"
+  tag_regex: "\\.([AB])(?:\\.|$)"
+  io:
+    topology: "./input/alad_noh.psf"
+    stride: 1
+  pairing:
+    allow_skip_first_colvars: true
+    strict: true
+  features:
+    mode: "internal_zmat"
+    internal_zmat:
+      atomselect: "protein and name CA"
+      atom_order: null
+      max_atoms: null
+      order: "index"
+  riteweight:
+    n_clusters: 100
+    n_iter: 50
+    tol: 1.0e-6
+    tol_window: 5
+    avg_last: 30
+    seed: 2026
+    lag: 50
+  colvars:
+    cv: ["phi", "psi", "theta"]
+    save_cols: "all"
+    periodic_cols: []
+    bins: [180, 180]
+    temperature_K: 300.0
+  committor_labels:
+    enabled: true
+    cvs_to_label: ["phi", "psi"]
+    basin_A: [-87.0, 74.0]
+    basin_B: [70.0, -70.0]
+    basin_size: 5.0
+    k_prefactor: 1.0
+    angle_unit: "degree"
+
+FEL_estimate:
+  temperature_K: 300.0
+  projections:
+    - name: "phi_psi"
+      cvs: ["phi", "psi"]
+      bins: [180, 180]
+      ranges: [[-180.0, 180.0], [-180.0, 180.0]]
+      periodicities: [true, true]
+      sigma_bins: [1.0, 1.0]
+      F_max: 10.0

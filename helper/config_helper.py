@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+import math
 from pathlib import Path
 import sys
 from typing import Any, Mapping, Sequence
@@ -127,7 +128,14 @@ FIELD_HELP = {
     "NAMD.execution.gpu.command": "YAML command list with workflow placeholders.",
     "RiteWeight.committor_labels.basin_A": "Coordinates defining state A.",
     "RiteWeight.committor_labels.basin_B": "Coordinates defining state B.",
-    "FEL_estimate.projections": "YAML list of one- or two-dimensional FEL projections.",
+    "FEL_estimate.landscape_F_max": (
+        "Calculation/fill cap retained in .dat/.npz; projection F_max controls "
+        "only the plot and must not exceed this value."
+    ),
+    "FEL_estimate.projections": (
+        "YAML list of one- or two-dimensional FEL projections. F_max is the "
+        "plot display cap; energies above it are white."
+    ),
 }
 
 FIELD_LABELS = {
@@ -293,12 +301,57 @@ def validate_workflow_config(config: Mapping[str, Any]) -> list[str]:
                 errors.append(f"RiteWeight.committor_labels.{key} is required.")
 
     if _get_path(config, "Workflow.run_fel", True):
+        landscape_f_max = _get_path(
+            config, "FEL_estimate.landscape_F_max", 10.0
+        )
+        try:
+            if isinstance(landscape_f_max, bool):
+                raise ValueError
+            landscape_f_max = float(landscape_f_max)
+            if not math.isfinite(landscape_f_max) or landscape_f_max <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append(
+                "FEL_estimate.landscape_F_max must be a finite positive number."
+            )
+            landscape_f_max = None
+
         projections = _get_path(config, "FEL_estimate.projections", [])
         if not isinstance(projections, list) or not projections:
             errors.append(
                 "FEL_estimate.projections needs at least one projection when "
                 "Workflow.run_fel is true."
             )
+        else:
+            for index, projection in enumerate(projections):
+                if not isinstance(projection, Mapping):
+                    errors.append(
+                        f"FEL_estimate.projections[{index}] must be a YAML mapping."
+                    )
+                    continue
+                plot_f_max = projection.get("F_max")
+                if plot_f_max is None:
+                    continue
+                try:
+                    if isinstance(plot_f_max, bool):
+                        raise ValueError
+                    plot_f_max = float(plot_f_max)
+                    if not math.isfinite(plot_f_max) or plot_f_max <= 0:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    errors.append(
+                        f"FEL_estimate.projections[{index}].F_max must be a "
+                        "finite positive number."
+                    )
+                    continue
+                if (
+                    landscape_f_max is not None
+                    and plot_f_max > landscape_f_max
+                ):
+                    errors.append(
+                        f"FEL_estimate.projections[{index}].F_max cannot exceed "
+                        "FEL_estimate.landscape_F_max."
+                    )
 
     return errors
 

@@ -1,7 +1,9 @@
 import torch
 from torch.utils.data import Dataset
-import mdtraj as md
 import os
+
+from utils.mdtraj_io import load_dcd as quiet_md_load_dcd
+
 
 class ProteinDataset(Dataset):
     def __init__(self, topology_path: str, dcd_path: str):
@@ -11,7 +13,7 @@ class ProteinDataset(Dataset):
         if not os.path.exists(dcd_path):
             raise FileNotFoundError(f"DCD file not found: {dcd_path}")
 
-        traj = md.load_dcd(dcd_path, top=topology_path)
+        traj = quiet_md_load_dcd(dcd_path, top=topology_path)
         if traj is None or traj.n_frames == 0:
             raise ValueError(f"Could not load trajectory: {dcd_path}")
 

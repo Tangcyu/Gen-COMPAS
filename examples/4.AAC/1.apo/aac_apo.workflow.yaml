@@ -145,6 +145,7 @@ RiteWeight:
 
 FEL_estimate:
   temperature_K: 300.0
+  landscape_F_max: 30.0
   projections:
     - name: "coplanar_1_coplanar_2"
       cvs: ["coplanar_1", "coplanar_2"]

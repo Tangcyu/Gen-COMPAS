@@ -144,6 +144,7 @@ RiteWeight:
 
 FEL_estimate:
   temperature_K: 303.0
+  landscape_F_max: 5.0
   projections:
     - name: "RMSD_to_A_RMSD_to_B"
       cvs: ["RMSD_to_A", "RMSD_to_B"]
@@ -151,4 +152,4 @@ FEL_estimate:
       ranges: [[0.0, 100.0], [0.0, 100.0]]
       periodicities: [false, false]
       sigma_bins: [1.0, 1.0]
-      F_max: 10.0
+      F_max: 5.0

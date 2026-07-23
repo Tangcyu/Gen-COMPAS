@@ -224,9 +224,10 @@ RiteWeight:
 FEL_estimate:
   input: null
   output_dir: null
-  weight_column: "weight"
+  weight_column: "fel_weight"
   temperature_K: 290.0
   probability_floor: 1.0e-300
+  landscape_F_max: 10.0
   projections:
     - name: "RMSD_CA_RMSD_hx"
       cvs: ["RMSD_CA", "RMSD_hx"]

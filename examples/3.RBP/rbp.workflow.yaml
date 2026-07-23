@@ -141,6 +141,7 @@ RiteWeight:
 
 FEL_estimate:
   temperature_K: 300.0
+  landscape_F_max: 10.0
   projections:
     - name: "hinge_distZ"
       cvs: ["hinge", "distZ"]

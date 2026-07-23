@@ -358,6 +358,19 @@ Compute statistical weights and aligned training artifacts using the
 
 <p>Build one or more weighted 1D/2D free-energy projections directly from the RiteWeight Torch or CSV table.</p>
 
+<p>RiteWeight writes two distinct frame-weight columns. <code>transition_weight</code>
+(also retained as the backward-compatible <code>weight</code> column) assigns each
+lagged segment weight to its origin and is used by VCN training.
+<code>fel_weight</code> assigns half of each segment weight to its origin and half
+to its endpoint. This time-symmetric marginal includes the final lagged frames of
+every trajectory and is the default for FEL projections.</p>
+
+<p><code>FEL_estimate.landscape_F_max</code> is the high free-energy cap used
+when filling unsampled bins and smoothing the landscape. A projection's
+<code>F_max</code> controls only the PNG display range; the <code>.dat</code>
+and <code>.npz</code> outputs retain the landscape calculated with the higher
+cap.</p>
+
 <h2>Practical Guidance for Parameter Tuning</h2>
 
 <p>

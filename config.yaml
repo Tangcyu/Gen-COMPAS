@@ -232,9 +232,10 @@ RiteWeight:
 FEL_estimate:
   input: "./output_riteweight/vcn_training.pt"  # RiteWeight .pt or frame_weights.csv
   output_dir: "./output_riteweight/fel"
-  weight_column: "weight"
+  weight_column: "fel_weight"                  # Symmetric start/end RiteWeight marginal
   temperature_K: 300.0
   probability_floor: 1.0e-300
+  landscape_F_max: 10.0                       # Calculation/fill cap; saved in .dat/.npz
   projections:
     - name: "CV1_CV2"
       cvs: ["CV1", "CV2"]
@@ -242,4 +243,4 @@ FEL_estimate:
       ranges: [[0.0, 180.0], [0.0, 180.0]]
       periodicities: [true, true]
       sigma_bins: [1.0, 1.0]
-      F_max: 10.0
+      F_max: 10.0                              # PNG display maximum only

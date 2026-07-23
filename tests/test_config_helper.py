@@ -49,6 +49,7 @@ def test_complete_config_expands_defaults_and_preserves_overrides():
     assert config["VCN"]["q_variance"] == 0.2
     assert config["VCN"]["n_targets"] == 20
     assert config["Workflow"]["warm_start_diffusion"] is True
+    assert config["FEL_estimate"]["landscape_F_max"] == 10.0
     assert config["Custom"]["preserved"] is True
 
 
@@ -116,6 +117,21 @@ def test_validation_reports_missing_inputs_and_invalid_q_variance():
 
     assert any("initial unbiased trajectory" in error for error in errors)
     assert any("VCN.q_variance" in error for error in errors)
+
+
+def test_validation_rejects_plot_cap_above_landscape_cap():
+    config = complete_config(
+        {
+            "FEL_estimate": {
+                "landscape_F_max": 10.0,
+                "projections": [{"cvs": ["CV"], "F_max": 11.0}],
+            }
+        }
+    )
+
+    errors = validate_workflow_config(config)
+
+    assert any("F_max cannot exceed" in error for error in errors)
 
 
 def test_legacy_riteweight_top_key_is_migrated():

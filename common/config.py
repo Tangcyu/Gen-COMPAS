@@ -214,9 +214,10 @@ DEFAULT_CONFIG = {
     "FEL_estimate": {
         "input": None,
         "output_dir": "./output_riteweight/fel",
-        "weight_column": "weight",
+        "weight_column": "fel_weight",
         "temperature_K": 300.0,
         "probability_floor": 1.0e-300,
+        "landscape_F_max": 10.0,
         "projections": [],
     },
 }

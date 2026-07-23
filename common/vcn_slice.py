@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import pandas as pd
-import mdtraj as md
 import yaml
 import matplotlib.pyplot as plt
 import torch
@@ -12,6 +11,7 @@ from vcn.zmatrix import (
 )
 from common.feature_contract import validate_riteweight_vcn_featurization
 from common.target_selection import committor_slice_bounds, select_slice_targets
+from utils.mdtraj_io import load as quiet_md_load
 
 
 # =========================================================
@@ -55,7 +55,7 @@ def load_dcd_data(path0, dcdfile, topfile, atomselect):
     """Load DCD trajectory and apply atom selection if given."""
     dcd_path = dcdfile if os.path.isabs(dcdfile) else os.path.join(path0, dcdfile)
     top_path = topfile if os.path.isabs(topfile) else os.path.join(path0, topfile)
-    traj = md.load(dcd_path, top=top_path)
+    traj = quiet_md_load(dcd_path, top=top_path)
     if atomselect is not None:
         atomindex = traj.topology.select(atomselect) + 1
     else:

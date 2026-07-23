@@ -133,8 +133,9 @@ FIELD_HELP = {
         "only the plot and must not exceed this value."
     ),
     "FEL_estimate.projections": (
-        "YAML list of one- or two-dimensional FEL projections. F_max is the "
-        "plot display cap; energies above it are white."
+        "Use Add projection to create independently editable one- or "
+        "two-dimensional chunks. F_max is the plot display cap; energies "
+        "above it are white."
     ),
 }
 
@@ -147,6 +148,28 @@ FIELD_LABELS = {
 
 
 _MISSING = object()
+
+FEL_PROJECTION_FIELD_DEFAULTS = {
+    "name": "CV1_CV2",
+    "cvs": ["CV1", "CV2"],
+    "bins": [200, 200],
+    "ranges": [[0.0, 1.0], [0.0, 1.0]],
+    "periodicities": [False, False],
+    "sigma_bins": [1.0, 1.0],
+    "F_max": 10.0,
+}
+FEL_PROJECTION_YAML_FIELDS = {
+    "cvs",
+    "bins",
+    "ranges",
+    "periodicities",
+    "sigma_bins",
+}
+
+
+def new_fel_projection() -> dict:
+    """Return an independent projection template for the GUI chunk editor."""
+    return deepcopy(FEL_PROJECTION_FIELD_DEFAULTS)
 
 
 def _get_path(config: Mapping[str, Any], dotted_path: str, default: Any = _MISSING):
@@ -509,6 +532,8 @@ def launch_gui(
             return ".".join(self.path)
 
         def value(self):
+            if self.kind == "collection":
+                return self.control.value()
             if self.kind == "boolean":
                 return bool(self.control.get())
             if self.kind == "text":
@@ -523,6 +548,163 @@ def launch_gui(
                 self.control.insert("1.0", value)
             else:
                 self.control.set(value)
+
+    class ProjectionListControl:
+        """Repeatable GUI chunks for FEL_estimate.projections."""
+
+        def __init__(self, owner, parent, projections):
+            self.owner = owner
+            self.items = []
+            self.frame = ttk.Frame(parent, style="Card.TFrame")
+            toolbar = ttk.Frame(self.frame, style="Card.TFrame")
+            toolbar.pack(fill="x", pady=(0, 8))
+            ttk.Button(
+                toolbar,
+                text="+ Add projection",
+                command=self.add_projection,
+                style="Accent.TButton",
+            ).pack(side="left")
+            ttk.Label(
+                toolbar,
+                text="Each projection is saved as one item in FEL_estimate.projections.",
+                style="Help.TLabel",
+            ).pack(side="left", padx=(12, 0))
+            self.items_host = ttk.Frame(self.frame, style="Card.TFrame")
+            self.items_host.pack(fill="x")
+
+            for projection in projections:
+                self.add_projection(projection)
+
+        @staticmethod
+        def _render_value(value):
+            if isinstance(value, (list, Mapping)):
+                return yaml.safe_dump(
+                    value,
+                    sort_keys=False,
+                    default_flow_style=isinstance(value, list)
+                    and not any(isinstance(item, Mapping) for item in value),
+                ).rstrip()
+            return "" if value is None else str(value)
+
+        def _make_field_editor(self, parent, row, key, value, expected, index):
+            ttk.Label(
+                parent,
+                text=key,
+                style="Card.TLabel",
+            ).grid(row=row, column=0, sticky="nw", padx=(4, 10), pady=4)
+            path = ("FEL_estimate", "projections", str(index), str(key))
+            parse_expected = None if key == "F_max" else expected
+
+            if isinstance(expected, bool):
+                variable = tk.BooleanVar(value=bool(value))
+                control = ttk.Checkbutton(parent, variable=variable)
+                control.grid(row=row, column=1, sticky="w", pady=4)
+                return FieldEditor(path, expected, "boolean", variable)
+
+            if key in FEL_PROJECTION_YAML_FIELDS or isinstance(
+                expected, (list, Mapping)
+            ):
+                height = 3 if key == "ranges" else 2
+                control = tk.Text(
+                    parent,
+                    height=height,
+                    width=64,
+                    wrap="none",
+                    relief="solid",
+                    borderwidth=1,
+                    font=self.owner.fonts["fixed"],
+                    padx=7,
+                    pady=5,
+                )
+                control.insert("1.0", self._render_value(value))
+                control.grid(row=row, column=1, sticky="ew", pady=4)
+                if key in FEL_PROJECTION_YAML_FIELDS:
+                    parse_expected = None
+                return FieldEditor(path, parse_expected, "text", control)
+
+            variable = tk.StringVar(value=self._render_value(value))
+            control = ttk.Entry(parent, textvariable=variable)
+            control.grid(row=row, column=1, sticky="ew", pady=4)
+            return FieldEditor(path, parse_expected, "entry", variable)
+
+        def add_projection(self, projection=None):
+            projection = deepcopy(
+                new_fel_projection() if projection is None else projection
+            )
+            if not isinstance(projection, Mapping):
+                projection = new_fel_projection()
+            index = len(self.items)
+            card = tk.Frame(
+                self.items_host,
+                background="#f7fafb",
+                highlightbackground="#d7e1e5",
+                highlightthickness=1,
+                padx=10,
+                pady=8,
+            )
+            card.pack(fill="x", pady=(0, 10))
+
+            header = tk.Frame(card, background="#f7fafb")
+            header.pack(fill="x")
+            title = ttk.Label(
+                header,
+                text=f"Projection {index + 1}",
+                style="GroupTitle.TLabel",
+            )
+            title.pack(side="left")
+
+            item = {"card": card, "title": title, "editors": {}}
+            ttk.Button(
+                header,
+                text="Remove",
+                command=lambda current=item: self.remove_projection(current),
+            ).pack(side="right")
+
+            body = tk.Frame(card, background="#f7fafb")
+            body.pack(fill="x")
+            body.columnconfigure(1, weight=1)
+            field_defaults = dict(FEL_PROJECTION_FIELD_DEFAULTS)
+            for key, value in projection.items():
+                if key not in field_defaults:
+                    field_defaults[key] = value
+            for row, (key, expected) in enumerate(field_defaults.items()):
+                # Keep omitted optional settings unset when loading an existing
+                # projection; only newly added chunks receive the full template.
+                value = projection[key] if key in projection else None
+                item["editors"][key] = self._make_field_editor(
+                    body, row, key, value, expected, index
+                )
+
+            self.items.append(item)
+            self._renumber()
+
+        def remove_projection(self, item):
+            if item not in self.items:
+                return
+            item["card"].destroy()
+            self.items.remove(item)
+            self._renumber()
+
+        def _renumber(self):
+            for index, item in enumerate(self.items):
+                item["title"].configure(text=f"Projection {index + 1}")
+                for editor in item["editors"].values():
+                    editor.path = (
+                        "FEL_estimate",
+                        "projections",
+                        str(index),
+                        editor.path[-1],
+                    )
+
+        def value(self):
+            projections = []
+            for item in self.items:
+                projection = {
+                    key: editor.value()
+                    for key, editor in item["editors"].items()
+                }
+                projections.append(projection)
+            return projections
 
     class ConfigEditor:
         def __init__(self, root, config, path):
@@ -1070,7 +1252,20 @@ def launch_gui(
                 row=row, column=0, sticky="nw", padx=(3, 10), pady=4
             )
 
-            if isinstance(expected, bool):
+            if dotted == "FEL_estimate.projections":
+                if not isinstance(value, list):
+                    raise TypeError("FEL_estimate.projections must be a YAML list.")
+                control = ProjectionListControl(self, parent, value)
+                control.frame.grid(
+                    row=row + 1,
+                    column=0,
+                    columnspan=3,
+                    sticky="ew",
+                    padx=3,
+                    pady=(3, 6),
+                )
+                editor = FieldEditor(path, expected, "collection", control)
+            elif isinstance(expected, bool):
                 variable = tk.BooleanVar(value=bool(value))
                 control = ttk.Checkbutton(parent, variable=variable)
                 control.grid(row=row, column=1, sticky="w", pady=4)
@@ -1133,14 +1328,14 @@ def launch_gui(
             help_text = FIELD_HELP.get(dotted)
             if help_text:
                 ttk.Label(parent, text=help_text, style="Help.TLabel").grid(
-                    row=row + 1,
-                    column=1,
+                    row=row + (2 if dotted == "FEL_estimate.projections" else 1),
+                    column=0 if dotted == "FEL_estimate.projections" else 1,
                     columnspan=2,
                     sticky="w",
                     pady=(0, 3),
                 )
-                return 2
-            return 1
+                return 3 if dotted == "FEL_estimate.projections" else 2
+            return 2 if dotted == "FEL_estimate.projections" else 1
 
         def browse(self, editor, kind):
             initial = editor.control.get().strip()

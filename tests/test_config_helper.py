@@ -8,6 +8,7 @@ from helper.config_helper import (
     complete_config,
     get_tk_font_backend,
     load_complete_config,
+    new_fel_projection,
     parse_field_value,
     render_supersampled_text,
     save_complete_config,
@@ -51,6 +52,18 @@ def test_complete_config_expands_defaults_and_preserves_overrides():
     assert config["Workflow"]["warm_start_diffusion"] is True
     assert config["FEL_estimate"]["landscape_F_max"] == 10.0
     assert config["Custom"]["preserved"] is True
+
+
+def test_new_fel_projection_returns_independent_editable_chunks():
+    first = new_fel_projection()
+    second = new_fel_projection()
+
+    first["cvs"][0] = "RMSD"
+    first["ranges"][0][0] = -1.0
+
+    assert second["cvs"] == ["CV1", "CV2"]
+    assert second["ranges"] == [[0.0, 1.0], [0.0, 1.0]]
+    assert second["F_max"] == 10.0
 
 
 @pytest.mark.parametrize(

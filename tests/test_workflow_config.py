@@ -19,7 +19,7 @@ def minimal_config(tmp_path: Path):
                     "topology_path": str(tmp_path / "initial.pdb"),
                 },
             },
-            "RiteWeight": {"io": {"top": str(tmp_path / "system.psf")}},
+            "RiteWeight": {"io": {"topology": str(tmp_path / "system.psf")}},
         },
     )
 

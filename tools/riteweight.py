@@ -15,7 +15,12 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from common.feature_contract import FEATURE_SCHEMA
+from common.config import normalize_config_aliases
+from tools.frame_weights import segment_weights_to_frame_weights
 from tools.tensor_table import save_tensor_table
+from utils.mdtraj_io import iterload as quiet_md_iterload
+from utils.mdtraj_io import load as quiet_md_load
+from utils.mdtraj_io import load_frame as quiet_md_load_frame
 
 try:
     import yaml
@@ -259,7 +264,10 @@ class RiteWeightResult:
     w_segment: np.ndarray
     w_frame_nonzero: np.ndarray
     frame_map: np.ndarray
+    w_frame_transition: np.ndarray
+    w_frame_fel: np.ndarray
     delta_history: List[float]
+
 
 def riteweight(X, seg_start_idx, seg_end_idx, n_clusters, n_iter, tol, tol_window, avg_last, seed):
     rng = np.random.default_rng(seed)
@@ -302,17 +310,20 @@ def riteweight(X, seg_start_idx, seg_end_idx, n_clusters, n_iter, tol, tol_windo
     else:
         w_final = w
 
-    w_frame = np.zeros(X.shape[0], dtype=np.float64)
-    np.add.at(w_frame, seg_start_idx, w_final)
-    mask = w_frame > 0
+    w_frame_transition, w_frame_fel = segment_weights_to_frame_weights(
+        X.shape[0], seg_start_idx, seg_end_idx, w_final
+    )
+    mask = w_frame_transition > 0
     frame_map = np.where(mask)[0]
-    w_frame_nonzero = w_frame[mask]
+    w_frame_nonzero = w_frame_transition[mask]
     w_frame_nonzero /= w_frame_nonzero.sum()
 
     return RiteWeightResult(
         w_segment=w_final,
         w_frame_nonzero=w_frame_nonzero,
         frame_map=frame_map,
+        w_frame_transition=w_frame_transition,
+        w_frame_fel=w_frame_fel,
         delta_history=delta_hist,
     )
 
@@ -621,7 +632,7 @@ def load_or_compute_features_with_cache(
     offset = 0
     for pair_index, (dcd_path, col_path) in enumerate(tqdm(pairs)):
         # load dcd just to know n_frames (mdtraj cheap-ish) unless you want to infer from colvars only
-        traj = md.load(dcd_path, top=top_path)
+        traj = quiet_md_load(dcd_path, top=top_path)
         df = read_colvars_traj(col_path)
 
         if stride != 1:
@@ -721,7 +732,7 @@ def load_or_compute_features_with_cache(
     X_list = []
     offset_check = 0
     for (dcd_path, col_path), nF in tqdm(zip(used_pairs, nframes_each)):
-        traj = md.load(dcd_path, top=top_path)
+        traj = quiet_md_load(dcd_path, top=top_path)
         if stride != 1:
             traj = traj[::stride]
         # compute features for exactly nF frames
@@ -759,7 +770,7 @@ def load_or_compute_features_with_cache(
 def check_mismatch_report(pairs, top, stride, allow_skip_first):
     rows = []
     for dcd_path, col_path in pairs:
-        traj = md.load(dcd_path, top=top)
+        traj = quiet_md_load(dcd_path, top=top)
         df = read_colvars_traj(col_path)
         if stride != 1:
             traj = traj[::stride]
@@ -805,7 +816,7 @@ def write_diffusion_training_data(
             f"{alignment_atomselect!r} matched {len(alignment_indices)}."
         )
 
-    reference = md.load_frame(used_pairs[0][0], 0, top=top_path)
+    reference = quiet_md_load_frame(used_pairs[0][0], 0, top=top_path)
     if reference.n_frames != 1:
         raise RuntimeError("Could not load the diffusion RMSD reference frame.")
 
@@ -819,7 +830,7 @@ def write_diffusion_training_data(
     ) as writer:
         for (dcd_source, _), expected in zip(used_pairs, expected_frames):
             source_frames = 0
-            for chunk in md.iterload(
+            for chunk in quiet_md_iterload(
                 dcd_source,
                 top=top_path,
                 chunk=max(int(chunk_size), 1),
@@ -870,7 +881,8 @@ def write_diffusion_training_data(
 
 def load_yaml(path: str) -> Dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        loaded = yaml.safe_load(f)
+    return normalize_config_aliases({"RiteWeight": loaded})["RiteWeight"]
 
 def run_riteweight(cfg: Dict, check_mismatch: bool = False):
 
@@ -886,7 +898,7 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         colvars_pattern = f"*{cfg.get('match_colvars', '')}*.colvars.traj"
     tag_re = cfg.get("tag_regex", r"([AB])")
 
-    top_path = cfg["io"]["top"]
+    top_path = cfg["io"]["topology"]
     out = cfg["io"].get("out", "rw_out")
     stride = int(cfg["io"].get("stride", 1))
     output_cfg = cfg.get("outputs", {})
@@ -1006,9 +1018,11 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         avg_last=avg_last, seed=seed
     )
 
-    # frame weights
-    CV_use = CV_all[res.frame_map]
-    w_use = res.w_frame_nonzero
+    # The legacy PMF branch is an equilibrium observable, so use the symmetric
+    # start/end marginal rather than the transition-origin-only weights.
+    fel_frame_map = np.flatnonzero(res.w_frame_fel > 0.0)
+    CV_use = CV_all[fel_frame_map]
+    w_use = res.w_frame_fel[fel_frame_map]
 
     # save weights
 
@@ -1018,8 +1032,8 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
     #            np.column_stack([np.arange(X_all.shape[0]), w_frame_full]),
     #            delimiter=",", header="frame_index,weight", comments="")
     # --- frame weights (full length, zeros for frames not used as segment starts) ---
-    w_frame_full = np.zeros(X_all.shape[0], dtype=np.float64)
-    w_frame_full[res.frame_map] = w_use
+    w_frame_full = res.w_frame_transition
+    w_frame_fel = res.w_frame_fel
 
     # --- build output table ---
     out_df = df_save_all.copy()
@@ -1029,6 +1043,10 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
             f"weights={len(w_frame_full)}."
         )
     out_df.insert(0, "frame", np.arange(len(out_df), dtype=np.int64))
+    # ``weight`` remains the transition-origin weight expected by the VCN
+    # pipeline.  FEL estimation reads ``fel_weight`` by default.
+    out_df["transition_weight"] = w_frame_full
+    out_df["fel_weight"] = w_frame_fel
     out_df["weight"] = w_frame_full
 
     # --- periodic sin/cos columns ---

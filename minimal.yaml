@@ -7,8 +7,8 @@ Workflow:
     topology_path: "/PATH/TO/INITIAL/TOPOLOGY.psf"
 
 Occupancy:
-  topology_file: "/PATH/TO/system_withH.psf"
-  pdb_file: "/PATH/TO/reference_withH.pdb"
+  topology_file: "/PATH/TO/system_withH.psf"  # Reference topology WITH hydrogens
+  pdb_file: "/PATH/TO/reference_withH.pdb"    # Matching reference coordinates WITH hydrogens
 
 NAMD:
   namd_path: "/PATH/TO/namd3"
@@ -23,7 +23,7 @@ NAMD:
 
 RiteWeight:
   io:
-    top: "/PATH/TO/system_withH.psf"
+    topology: "/PATH/TO/system_withH.psf"
   committor_labels:
     basin_A: [0.0, 10.0]
     basin_B: [10.0, 0.0]

@@ -14,7 +14,7 @@ It combines <strong>diffusion models</strong> for structure generation with <str
 </p>
 
 <p>
-For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in: <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
+For computing statistical weights and estimating free energy landscapes, please refer to the <strong>Riteweight</strong> method described in:<a href="https://www.pnas.org/doi/10.1073/pnas.2529246123">https://www.pnas.org/doi/10.1073/pnas.2529246123</a> or <a href="https://arxiv.org/html/2401.05597v1">https://arxiv.org/html/2401.05597v1</a>.
 </p>
 
 <p>The RiteWeight implementation and its downstream weighted FEL projection are available as stages of <code>workflow.py</code>.</p>
@@ -88,6 +88,8 @@ For computing statistical weights and estimating free energy landscapes, please 
 
 <h2>Workflow Usage</h2>
 
+<p><strong>Important for new systems:</strong> Use Gen-COMPAS stepwise when setting up a new system. Do not run the full workflow blindly to generate trajectories. Instead, inspect the configuration and dry-run schedule first, then run and check each stage before continuing. In particular, verify generated structures, committor slices, clustering/target selection, TMD behavior, and trajectory diagnostics. This helps catch generation or simulation errors caused by unsuitable parameter choices before they propagate to later calculations.</p>
+
 <h3>Quick Start</h3>
 
 <p>After installation, <code>gen-compas</code> is the primary command. Always inspect the resolved schedule and paths before starting an expensive run:</p>
@@ -117,7 +119,7 @@ Iterations 1+:
   -&gt; fel_estimate
 </code></pre>
 
-<p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage first retains generated frames with <code>0.4 &lt;= q &lt;= 0.6</code>, then clusters structural VCN features and selects <code>VCN.n_targets</code> representative frames.</p>
+<p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage retains generated frames within <code>0.5 +/- VCN.q_variance</code>, then selects <code>VCN.n_targets</code> number of candidates.</p>
 
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
@@ -169,6 +171,7 @@ gen-compas --config workflow.yaml --iteration 1 --rerun_step sample_diffusion
     2: 10
 
 VCN:
+  q_variance: 0.1
   n_targets: 20
   require_n_targets: true
   cvs_to_plot: [CV1, CV2]
@@ -178,6 +181,8 @@ VCN:
 <p><code>minimal.yaml</code> contains only system-specific or non-default values. Defaults live in <code>common/config.py</code>. The initial unbiased DCD and its matching topology are used only for iteration-0 diffusion training; no RiteWeight or Colvars trajectory is required before that training. The normal <code>Unbiased.A.conf</code>/<code>Unbiased.B.conf</code> templates provide the post-TMD trajectories consumed by the first RiteWeight step.</p>
 
 <p><code>Workflow.iteration_noise_scales</code> overrides <code>Generative.inference.noise_scale</code> only for the listed iterations. Likewise, <code>Workflow.iteration_diffusion_epochs</code> overrides <code>Generative.training.epochs</code>; omitted iterations use the Generative fallback values. Set <code>VCN.plot_committor_projections: true</code> only when committor maps on <code>cvs_to_plot</code> should be written during <code>committor_slice</code>.</p>
+
+<p><code>VCN.q_variance</code> sets the half-width of the committor slice around <code>q=0.5</code> and must be between 0 and 0.5. The default <code>0.1</code> selects <code>0.4 &lt;= q &lt;= 0.6</code>. <code>VCN.n_targets</code> is a simple count limit: after this filter, the workflow writes the first N candidate frames in trajectory order. It does not cluster the candidates. With <code>require_n_targets: true</code>, the step fails if fewer than N candidates are available; otherwise, it writes all available candidates.</p>
 
 <h3>Iteration Output Layout</h3>
 
@@ -233,12 +238,28 @@ gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 
 <p><code>clustering</code> belongs to iteration 0, while <code>train_committor</code> and <code>committor_slice</code> belong to iterations 1 and later. <code>fel_estimate</code> is available only when <code>Workflow.run_fel</code> is enabled. Invalid iteration/step combinations produce a command-line error before the stage starts.</p>
 
-<h2>Configuration File (config.yaml)</h2>
+<h2 id="configuration-file-configyaml">Configuration File (config.yaml)</h2>
 
 <p>
 All parameters for model training, inference, and analysis are specified in a single YAML file.
 Below is a summary of each section.
 </p>
+
+<h3>Generating a YAML File with the GUI</h3>
+
+<p>The Gen-COMPAS configuration GUI can be used to create the YAML file for subsequent calculations. It can generate a complete configuration from scratch or load an existing minimal/complete YAML, guide the user through the supported sections, browse for input files and directories, validate essential inputs, preview the result, and save the final YAML. The saved file is then passed to the workflow with <code>gen-compas --config &lt;CONFIG.yaml&gt;</code>.</p>
+
+<pre><code># Launch the interactive configuration helper
+gen-compas-config
+
+# Generate a complete YAML from an existing minimal configuration
+gen-compas-config --config minimal.yaml --output complete.workflow.yaml
+
+# Validate a generated or edited YAML without running calculations
+gen-compas-config --config complete.workflow.yaml --validate-only
+</code></pre>
+
+<p>Tkinter is required for the interactive GUI. Lists and sparse iteration overrides should be entered using standard YAML syntax. The GUI is intended to simplify configuration generation; users should still inspect the generated YAML and perform a dry run before starting expensive calculations.</p>
 
 <h3>Workflow Orchestration (Workflow)</h3>
 
@@ -295,7 +316,8 @@ Below is a summary of each section.
 
 <p><strong>Parameters include:</strong></p>
 <ul>
-<li><strong>pdb_dir, topology_file, pdb_file:</strong> Input files and directories.</li>
+<li><strong>pdb_dir:</strong> Workflow-managed generated target PDBs, normally without hydrogen atoms.</li>
+<li><strong>topology_file, pdb_file:</strong> Matching reference topology and coordinate PDB that include hydrogen atoms and supply the complete atom set.</li>
 <li><strong>add_hydrogens:</strong> Whether to add hydrogens. <em>(Notice: Only for formatting, do NOT use hydrogens for TMD simulations)</em></li>
 <li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
 </ul>
@@ -336,6 +358,19 @@ Compute statistical weights and aligned training artifacts using the
 
 <p>Build one or more weighted 1D/2D free-energy projections directly from the RiteWeight Torch or CSV table.</p>
 
+<p>RiteWeight writes two distinct frame-weight columns. <code>transition_weight</code>
+(also retained as the backward-compatible <code>weight</code> column) assigns each
+lagged segment weight to its origin and is used by VCN training.
+<code>fel_weight</code> assigns half of each segment weight to its origin and half
+to its endpoint. This time-symmetric marginal includes the final lagged frames of
+every trajectory and is the default for FEL projections.</p>
+
+<p><code>FEL_estimate.landscape_F_max</code> is the high free-energy cap used
+when filling unsampled bins and smoothing the landscape. A projection's
+<code>F_max</code> controls only the PNG display range; the <code>.dat</code>
+and <code>.npz</code> outputs retain the landscape calculated with the higher
+cap.</p>
+
 <h2>Practical Guidance for Parameter Tuning</h2>
 
 <p>
@@ -369,9 +404,32 @@ Increasing the sampling noise moves generated structures farther from the curren
 <li>PyYAML, tqdm, tensorboard</li>
 </ul>
 
+<p><strong>External simulation requirements:</strong></p>
+<ul>
+<li>NAMD with the bundled Colvars module. NAMD 3.0.2 or newer is recommended because 3.0.2 includes important Colvars fixes.</li>
+</ul>
+
 <h2>Gen-COMPAS Installation Guide</h2>
 
 <p>Gen-COMPAS requires Python 3.9 or newer. A fresh environment is strongly recommended because PyTorch, MDTraj, MDAnalysis, and their compiled dependencies must be mutually compatible. NAMD and Colvars are external applications: pip does not install them, so <code>NAMD.namd_path</code> and the NAMD template files must be supplied separately.</p>
+
+<h3>Install NAMD and Colvars</h3>
+
+<p>Download a precompiled NAMD build for the target CPU/GPU platform from the <a href="https://www.ks.uiuc.edu/Development/Download/download.cgi?PackageName=NAMD">official NAMD download page</a>, accept the NAMD license, and extract the archive. Colvars is included in NAMD and does not require a separate installation. The workflow expects templates that enable it with <code>colvars on</code> and point to a configuration file with <code>colvarsConfig</code>.</p>
+
+<p>Either add the directory containing <code>namd3</code> to <code>PATH</code>, or configure its absolute path in the workflow YAML:</p>
+
+<pre><code>NAMD:
+  namd_path: /absolute/path/to/NAMD/namd3
+  template_path: /absolute/path/to/NAMD_inputs
+</code></pre>
+
+<p>Confirm that the binary is executable before starting the workflow:</p>
+
+<pre><code>test -x /absolute/path/to/NAMD/namd3 &amp;&amp; echo "NAMD executable found"
+</code></pre>
+
+<p>On a local multicore workstation, NAMD runs configuration files as <code>namd3 +p&lt;threads&gt; &lt;configfile&gt;</code>. Gen-COMPAS builds this command from <code>NAMD.execution</code>; cluster-specific NAMD/Charm++ launch commands can be supplied there when needed. See the <a href="https://www.ks.uiuc.edu/Research/namd/3.0.2/ug/node93.html">official NAMD workstation instructions</a> and the <a href="https://colvars.github.io/">Colvars documentation</a> for platform and configuration details.</p>
 
 <h3>Recommended Conda Installation</h3>
 
@@ -410,6 +468,13 @@ python -m pip install .
 <pre><code>gen-compas --help
 gen-compas --config /path/to/workflow.yaml --iteration 0 1 2 --dry-run
 gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
+</code></pre>
+
+<h3>Graphical Configuration Helper</h3>
+
+<p>An optional graphical configuration helper is installed with Gen-COMPAS and can be used to generate YAML files for later workflow calculations. See <a href="#configuration-file-configyaml">Configuration File (config.yaml)</a> for its usage and validation options.</p>
+
+<pre><code>gen-compas-config
 </code></pre>
 
 <h3>Verify the Installation</h3>

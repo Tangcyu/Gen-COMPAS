@@ -1,0 +1,155 @@
+# Gen-COMPAS workflow configuration for the nAChR/pen-channel system.
+# Run from this directory, for example:
+#   gen-compas --config nachr.workflow.yaml --iteration 0 1 2 3 --stepwise
+#
+# The large production DCD is not bundled in this public example. Put the
+# matching initial DCD at ./input/initial_noh.dcd before running iteration 0.
+# The topology and NAMD templates below are supplied with this example.
+#
+# Sampling noise was checked against the source infer.temp.0 files:
+#   0th.AandB: 10.0, 1st.Iter: 10.0, 2nd.Iter: 5.0, 3rd.Iter: 3.0.
+
+Workflow:
+  root_dir: "./workflow_output"
+  initial_data_folders: []
+  initial_diffusion_data:
+    dcd_path: "./input/initial_noh.dcd"
+    topology_path: "./NAMD_inputs/TOP_files/noh.psf"
+  run_initial_unbiased: false
+  run_fel: true
+  warm_start_diffusion: true
+  isolate_steps: true
+  iteration_noise_scales: {0: 10.0, 1: 10.0, 2: 5.0, 3: 3.0}
+  iteration_diffusion_epochs: {0: 50, 1: 20, 2: 10, 3: 10}
+
+Generative:
+  device: "cuda:0"
+  random_seed: 42
+  model:
+    node_feature_dim: 64
+    time_embedding_dim: 128
+    hidden_dim: 128
+    num_schnet_layers: 4
+    num_gat_layers: 2
+    residue_attn_heads: 4
+    k_neighbors: 16
+  diffusion:
+    timesteps: 200
+    beta_schedule: "cosine"
+  training:
+    epochs: 50
+    batch_size: 2
+    lr: 1.0e-4
+    weight_decay: 1.0e-6
+    grad_clip: 1.0
+    num_workers: 0
+    save_interval: 50
+  inference:
+    num_samples: 1000
+    sample_batch: 100
+    noise_scale: 10.0
+
+VCN:
+  device: "cuda:0"
+  atomselect: "name CA or name N1"
+  stride: 10
+  time_shift: 2
+  cvs: ["coplanar_1", "ACH_1", "ACH_2"]
+  cvs_to_plot: ["coplanar_1", "ACH_1"]
+  epochs: 500
+  learning_rate: 1.0e-4
+  patience: 20
+  num_layers: 4
+  num_nodes: 128
+  k: 1.0
+  q_variance: 0.1
+  n_targets: 20
+  require_n_targets: true
+
+Clustering:
+  atom_selection: "protein and name CA* CZ*"
+  n_clusters: 10
+  n_per_cluster: 1
+  max_k: 20
+  select_farthest: true
+
+Occupancy:
+  topology_file: "./NAMD_inputs/TOP_files/input.psf"
+  pdb_file: "./NAMD_inputs/TOP_files/input.pdb"
+  add_hydrogens: true
+  selection: "protein and name CA CB CC CD CG CY CZ"
+
+NAMD:
+  namd_path: "namd3"
+  template_path: "./NAMD_inputs"
+  tmd_force_constant: 10000.0
+  existing_job_policy: "error"
+  protocols:
+    - name: "A"
+      tmd_template: "TMD.A.conf"
+      unbiased_template: "Unbiased.A.conf"
+      initial_unbiased_template: "Unbiased.A.conf"
+    - name: "B"
+      tmd_template: "TMD.B.conf"
+      unbiased_template: "Unbiased.B.conf"
+      initial_unbiased_template: "Unbiased.B.conf"
+  phases:
+    tmd: true
+    unbiased: true
+  execution:
+    device: "cpu"
+    parallel_jobs: 1
+    cpu:
+      threads_per_job: 4
+
+RiteWeight:
+  dcd_pattern: "*Unbiased.[AB].noh.dcd"
+  colvars_pattern: "*Unbiased.[AB].colvars.traj"
+  tag_regex: "\\.([AB])(?:\\.|$)"
+  io:
+    topology: "./NAMD_inputs/TOP_files/noh.psf"
+    stride: 1
+  pairing:
+    allow_skip_first_colvars: true
+    strict: false
+  features:
+    mode: "internal_zmat"
+    internal_zmat:
+      atomselect: "name CA or name N1"
+      atom_order: null
+      max_atoms: null
+      order: "index"
+  riteweight:
+    n_clusters: 100
+    n_iter: 50
+    tol: 1.0e-6
+    tol_window: 5
+    avg_last: 30
+    seed: 2026
+    lag: 50
+  colvars:
+    cv: ["coplanar_1", "ACH_1", "ACH_2"]
+    save_cols: "all"
+    periodic_cols: []
+    bins: [200, 200, 200]
+    temperature_K: 303.0
+  committor_labels:
+    enabled: true
+    cvs_to_label: ["coplanar_1", "ACH_1", "ACH_2"]
+    basin_A: [39.0, 35.0, 35.0]
+    basin_B: [44.0, 0.0, 0.0]
+    basin_size: [1.0, 7.5, 7.5]
+    k_prefactor: 1.0
+    angle_unit: "degree"
+
+FEL_estimate:
+  temperature_K: 303.0
+  landscape_F_max: 5.0
+  projections:
+    - name: "coplanar_1_ACH_1"
+      cvs: ["coplanar_1", "ACH_1"]
+      bins: [200, 200]
+      ranges: [[0.0, 100.0], [0.0, 100.0]]
+      periodicities: [false, false]
+      sigma_bins: [1.0, 1.0]
+      F_max: 5.0

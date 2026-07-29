@@ -1,0 +1,24 @@
+REMARK  PARAMETER STREAM FILE FOR ALANINE DIPEPTIDE IN VACUUM                         
+ATOM      1  CL  ALAD    1      15.015  51.935 -10.274  1.00  0.00      AD   
+ATOM      2  HL1 ALAD    1      14.735  51.701  -9.202  1.00  0.00      AD   
+ATOM      3  HL2 ALAD    1      15.910  51.238 -10.459  1.00  0.00      AD   
+ATOM      4  HL3 ALAD    1      15.301  52.994 -10.437  1.00  0.00      AD   
+ATOM      5  CLP ALAD    1      13.880  51.565 -11.150  1.00  0.00      AD   
+ATOM      6  OL  ALAD    1      13.241  50.585 -10.947  1.00  0.00      AD   
+ATOM      7  NL  ALAD    1      13.680  52.178 -12.356  1.00  0.00      AD   
+ATOM      8  HL  ALAD    1      14.241  52.981 -12.569  1.00  0.00      AD   
+ATOM      9  CA  ALAD    1      12.756  51.762 -13.380  1.00  0.00      AD   
+ATOM     10  HA  ALAD    1      11.928  51.317 -12.827  1.00  0.00      AD   
+ATOM     11  CB  ALAD    1      12.252  52.949 -14.180  1.00  0.00      AD   
+ATOM     12  HB1 ALAD    1      12.325  52.751 -15.262  1.00  0.00      AD   
+ATOM     13  HB2 ALAD    1      11.208  53.056 -13.795  1.00  0.00      AD   
+ATOM     14  HB3 ALAD    1      12.786  53.896 -13.911  1.00  0.00      AD   
+ATOM     15  CRP ALAD    1      13.320  50.624 -14.220  1.00  0.00      AD   
+ATOM     16  OR  ALAD    1      13.802  50.814 -15.338  1.00  0.00      AD   
+ATOM     17  NR  ALAD    1      13.220  49.449 -13.642  1.00  0.00      AD   
+ATOM     18  HR  ALAD    1      12.931  49.412 -12.666  1.00  0.00      AD   
+ATOM     19  CR  ALAD    1      13.571  48.278 -14.348  1.00  0.00      AD   
+ATOM     20  HR1 ALAD    1      13.356  48.265 -15.473  1.00  0.00      AD   
+ATOM     21  HR2 ALAD    1      14.645  48.019 -14.285  1.00  0.00      AD   
+ATOM     22  HR3 ALAD    1      12.945  47.529 -13.959  1.00  0.00      AD   
+END

@@ -1,0 +1,89 @@
+PSF
+
+       1 !NTITLE
+ REMARKS VMD-generated NAMD/X-Plor PSF structure file
+
+      42 !NATOM
+       1 TA     1    ACE  H1   HC           0.1123         1.008       0
+       2 TA     1    ACE  CH3  CT          -0.3662         12.01       0
+       3 TA     1    ACE  H2   HC           0.1123         1.008       0
+       4 TA     1    ACE  H3   HC           0.1123         1.008       0
+       5 TA     1    ACE  C    C            0.5972         12.01       0
+       6 TA     1    ACE  O    O           -0.5679            16       0
+       7 TA     2    ALA  N    N           -0.4157         14.01       0
+       8 TA     2    ALA  H    H            0.2719         1.008       0
+       9 TA     2    ALA  CA   CX           0.0337         12.01       0
+      10 TA     2    ALA  HA   H1           0.0823         1.008       0
+      11 TA     2    ALA  CB   CT          -0.1825         12.01       0
+      12 TA     2    ALA  HB1  HC           0.0603         1.008       0
+      13 TA     2    ALA  HB2  HC           0.0603         1.008       0
+      14 TA     2    ALA  HB3  HC           0.0603         1.008       0
+      15 TA     2    ALA  C    C            0.5973         12.01       0
+      16 TA     2    ALA  O    O           -0.5679            16       0
+      17 TA     3    ALA  N    N           -0.4157         14.01       0
+      18 TA     3    ALA  H    H            0.2719         1.008       0
+      19 TA     3    ALA  CA   CX           0.0337         12.01       0
+      20 TA     3    ALA  HA   H1           0.0823         1.008       0
+      21 TA     3    ALA  CB   CT          -0.1825         12.01       0
+      22 TA     3    ALA  HB1  HC           0.0603         1.008       0
+      23 TA     3    ALA  HB2  HC           0.0603         1.008       0
+      24 TA     3    ALA  HB3  HC           0.0603         1.008       0
+      25 TA     3    ALA  C    C            0.5973         12.01       0
+      26 TA     3    ALA  O    O           -0.5679            16       0
+      27 TA     4    ALA  N    N           -0.4157         14.01       0
+      28 TA     4    ALA  H    H            0.2719         1.008       0
+      29 TA     4    ALA  CA   CX           0.0337         12.01       0
+      30 TA     4    ALA  HA   H1           0.0823         1.008       0
+      31 TA     4    ALA  CB   CT          -0.1825         12.01       0
+      32 TA     4    ALA  HB1  HC           0.0603         1.008       0
+      33 TA     4    ALA  HB2  HC           0.0603         1.008       0
+      34 TA     4    ALA  HB3  HC           0.0603         1.008       0
+      35 TA     4    ALA  C    C            0.5973         12.01       0
+      36 TA     4    ALA  O    O           -0.5679            16       0
+      37 TA     5    NME  N    N           -0.4157         14.01       0
+      38 TA     5    NME  H    H            0.2719         1.008       0
+      39 TA     5    NME  CH3  CT           -0.149         12.01       0
+      40 TA     5    NME  HH31 H1           0.0976         1.008       0
+      41 TA     5    NME  HH32 H1           0.0976         1.008       0
+      42 TA     5    NME  HH33 H1           0.0976         1.008       0
+
+      41 !NBOND: bonds
+       1       2       2       3       2       4       2       5
+       5       6       5       7       7       8       7       9
+       9      10       9      11       9      15      11      12
+      11      13      11      14      15      16      15      17
+      17      18      17      19      19      20      19      21
+      19      25      21      22      21      23      21      24
+      25      26      25      27      27      28      27      29
+      29      30      29      31      29      35      31      32
+      31      33      31      34      35      36      35      37
+      37      38      37      39      39      40      39      41
+      39      42
+
+       0 !NTHETA: angles
+
+
+       0 !NPHI: dihedrals
+
+
+       0 !NIMPHI: impropers
+
+
+       0 !NDON: donors
+
+
+       0 !NACC: acceptors
+
+
+       0 !NNB
+
+       0       0       0       0       0       0       0       0
+       0       0       0       0       0       0       0       0
+       0       0       0       0       0       0       0       0
+       0       0       0       0       0       0       0       0
+       0       0       0       0       0       0       0       0
+       0       0
+
+       1       0 !NGRP
+       0       0       0
+

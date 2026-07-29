@@ -4,7 +4,6 @@ import yaml
 import pandas as pd
 import numpy as np
 import glob
-import mdtraj as md
 from tqdm import tqdm
 import argparse
 
@@ -28,6 +27,7 @@ from vcn.zmatrix import (
 )
 from tools.tensor_table import load_tensor_table
 from common.feature_contract import validate_riteweight_vcn_featurization
+from utils.mdtraj_io import load as quiet_md_load
 
 # =========================================================
 # === Utility functions ===
@@ -122,7 +122,11 @@ def load_dcd_trajectories(path0, dcdfile, topfile, stride):
 
     print(f"Found DCD files: {dcd_paths}")
     loaded_trajs = [
-        md.load(dcd, stride=int(stride) if stride else 1, top=os.path.join(path0, topfile))
+        quiet_md_load(
+            dcd,
+            stride=int(stride) if stride else 1,
+            top=os.path.join(path0, topfile),
+        )
         for dcd in sorted(dcd_paths)
     ]
 

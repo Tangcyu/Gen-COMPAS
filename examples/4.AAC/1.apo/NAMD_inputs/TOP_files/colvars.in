@@ -1,0 +1,84 @@
+
+colvar {
+     name lys32_asp231_cc
+     distance {
+         group1 {atomnumbers {468}}
+         group2 {atomnumbers {3608}}
+     }
+}
+
+colvar {
+     name arg137_glu29_cc
+     distance {
+         group1 {atomnumbers {2165}}
+         group2 {atomnumbers {410}}
+     }
+}
+
+colvar {
+     name arg234_asp134_cc
+     distance {
+         group1 {atomnumbers {3658}}
+         group2 {atomnumbers {2115}}
+     }
+}
+
+colvar {
+     name lys95_asp195_cc
+     distance {
+         group1 {atomnumbers {1526}}
+         group2 {atomnumbers {3058}}
+     }
+}
+
+colvar {
+     name lys198_asp291_cc
+     distance {
+         group1 {atomnumbers {3100}}
+         group2 {atomnumbers {4561}}
+     }
+}
+
+colvar {
+     name lys294_asp92_cc
+     distance {
+         group1 {atomnumbers {4613}}
+         group2 {atomnumbers {1465}}
+     }
+}
+
+colvar {
+     name coplanar_1
+     distance {
+         name x1
+         group1 {atomnumbers {468}}
+         group2 {atomnumbers {3608}}
+     }
+     distance {
+         name x2
+         group1 {atomnumbers {2165}}
+         group2 {atomnumbers {410}}
+     }
+     distance {
+         name x3
+         group1 {atomnumbers {3658}}
+         group2 {atomnumbers {2115}}
+     }
+}
+
+colvar {
+     name coplanar_2
+     distance {
+         group1 {atomnumbers {1526}}
+         group2 {atomnumbers {3058}}
+     }
+     distance {
+         group1 {atomnumbers {3100}}
+         group2 {atomnumbers {4561}}
+     }
+     distance {
+         group1 {atomnumbers {4613}}
+         group2 {atomnumbers {1465}}
+     }
+}
+

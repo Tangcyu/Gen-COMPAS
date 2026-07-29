@@ -94,7 +94,8 @@ VCN:
   gendcdfile     : "PATH/TO/GENERATED.dcd"  # DCD file to slice frames from (generated from generative model)
   model_fn       : "PATH/TO/CHECKPOINT"     # Path to trained model file
   slice_dir      : "PATH/TO/Slicing/OUTPUT" # Directory with slicing outputs
-  n_targets      :  20                      # Structural clusters after the fixed 0.4 <= q <= 0.6 slice
+  q_variance     :  0.1                     # Half-width around q=0.5; 0.1 selects 0.4 <= q <= 0.6
+  n_targets      :  20                      # First N frames from the configured q slice (no clustering)
   require_n_targets: true                   # Fail rather than emit fewer targets
 
 Clustering:
@@ -108,9 +109,9 @@ Clustering:
   select_farthest: true                     # also include farthest frames along with cluster centers
 
 Occupancy:
-  pdb_dir        : "./input_pdbs"           # Directory containing PDB files to process
-  topology_file  : "system_withH.psf"       # Topology file for adding hydrogens or setting occupancy
-  pdb_file       : "reference_withH.pdb"    # Reference PDB file for adding hydrogens or setting occupancy
+  pdb_dir        : "./input_pdbs"           # Generated target PDBs without hydrogen atoms
+  topology_file  : "system_withH.psf"       # Reference topology WITH hydrogen atoms
+  pdb_file       : "reference_withH.pdb"    # Matching reference coordinates WITH hydrogen atoms
   output_dir     : "./output_pdbs"          # Directory to save processed PDB files
   add_hydrogens  : true                     # if false, only occupancy is set
   selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
@@ -166,7 +167,7 @@ RiteWeight:
   tag_regex: "\\.([AB])(?:\\.|$)"           # A/B protocol tag used for pairing
 
   io:
-    top: "PATH/TO/TOPOLOGY.psf"
+    topology: "PATH/TO/TOPOLOGY.psf"
     out: "./output_riteweight"
     stride: 1
 
@@ -231,9 +232,10 @@ RiteWeight:
 FEL_estimate:
   input: "./output_riteweight/vcn_training.pt"  # RiteWeight .pt or frame_weights.csv
   output_dir: "./output_riteweight/fel"
-  weight_column: "weight"
+  weight_column: "fel_weight"                  # Symmetric start/end RiteWeight marginal
   temperature_K: 300.0
   probability_floor: 1.0e-300
+  landscape_F_max: 10.0                       # Calculation/fill cap; saved in .dat/.npz
   projections:
     - name: "CV1_CV2"
       cvs: ["CV1", "CV2"]
@@ -241,4 +243,4 @@ FEL_estimate:
       ranges: [[0.0, 180.0], [0.0, 180.0]]
       periodicities: [true, true]
       sigma_bins: [1.0, 1.0]
-      F_max: 10.0
+      F_max: 10.0                              # PNG display maximum only

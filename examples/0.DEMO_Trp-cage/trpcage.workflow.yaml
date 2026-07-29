@@ -1,0 +1,249 @@
+# Full Gen-COMPAS configuration for the Trp-cage workflow test.
+# Run from this directory with:
+#   gen-compas --config trpcage.workflow.yaml --iteration 0 1 2 --stepwise
+#
+# Iteration 0 intentionally starts from the existing unbiased trajectory. Its
+# order is diffusion -> sampling -> clustering -> TMD/unbiased -> RiteWeight.
+# RiteWeight output from iteration k trains diffusion and VCN in iteration k+1.
+
+Workflow:
+  root_dir: "./workflow_output"
+  initial_data_folders: []
+  initial_diffusion_data:
+    dcd_path: "./Dataset/0th.Iteration.noh.dcd"
+    topology_path: "./Dataset/trp_noh.psf"
+  run_initial_unbiased: false
+  run_fel: true
+  warm_start_diffusion: true
+  isolate_steps: true
+  iteration_noise_scales:
+    0: 2.0
+    1: 2.0
+    2: 0.5
+  iteration_diffusion_epochs:
+    0: 50
+    1: 10
+    2: 10
+
+Generative:
+  save_dir: null
+  device: "cuda:0"
+  random_seed: 42
+  init_checkpoint_path: null
+  data:
+    dcd_path: "./Dataset/0th.Iteration.noh.dcd"
+    topology_path: "./Dataset/trp_noh.psf"
+  model:
+    node_feature_dim: 64
+    time_embedding_dim: 128
+    hidden_dim: 128
+    num_schnet_layers: 4
+    num_gat_layers: 2
+    residue_attn_heads: 4
+    k_neighbors: 16
+  diffusion:
+    timesteps: 200
+    beta_schedule: "cosine"
+  training:
+    epochs: 10
+    batch_size: 128
+    lr: 1.0e-4
+    weight_decay: 1.0e-6
+    grad_clip: 1.0
+    num_workers: 0
+    save_interval: 50
+  inference:
+    checkpoint: null
+    output: null
+    num_samples: 10000
+    sample_batch: 500
+    noise_scale: 2.0
+
+VCN:
+  device: "cuda:1"
+  label: "committor"
+  sampling_path: "."
+  z_matrix: true
+  use_all: false
+  pair_distance: false
+  dcdfile: null
+  traj_fns: null
+  topfile: null
+  atomindex: []
+  atomselect: "protein and name CA"
+  stride: 10
+  cvs: []
+  periodic: false
+  val_ratio: 0.1
+  random_seed: 42
+  time_shift: 2
+  trajectory_column: "trajectory_id"
+  epochs: 500
+  learning_rate: 1.0e-4
+  patience: 20
+  batch_size_factor: 0.6
+  num_layers: 4
+  num_nodes: 64
+  k: 100.0
+  out_dir: null
+  cvs_to_plot: null
+  gendcdfile: null
+  model_fn: null
+  slice_dir: null
+  q_variance: 0.1
+  n_targets: 50
+  require_n_targets: true
+
+Clustering:
+  topology: null
+  trajectory: null
+  atom_selection: "protein and name CA"
+  output_dir: null
+  n_clusters: 10
+  n_per_cluster: 1
+  max_k: 20
+  select_farthest: true
+  random_seed: 0
+
+Occupancy:
+  pdb_dir: null
+  topology_file: "./NAMD_inputs/TOP_files/trp.psf"
+  pdb_file: "./NAMD_inputs/TOP_files/trp.pdb"
+  output_dir: null
+  add_hydrogens: true
+  selection: "protein and name CA CB CC CD CG CY CZ"
+
+NAMD:
+  namd_path: "namd3"
+  template_path: "./NAMD_inputs"
+  output_dir: null
+  tmd_force_constant: 100.0
+  existing_job_policy: "error"
+  targets:
+    path: null
+    pattern: "*.pdb"
+    recursive: false
+    target_filename: "output.pdb"
+  protocols:
+    - name: "A"
+      tmd_template: "TMD.A.conf"
+      unbiased_template: "Unbiased.A.conf"
+      initial_unbiased_template: "Unbiased.A.conf"
+    - name: "B"
+      tmd_template: "TMD.B.conf"
+      unbiased_template: "Unbiased.B.conf"
+      initial_unbiased_template: "Unbiased.B.conf"
+  phases:
+    tmd: true
+    unbiased: true
+  execution:
+    device: "gpu"
+    parallel_jobs: 7
+    dry_run: false
+    cpu:
+      threads_per_job: 2
+      command: ["{namd}", "+p{threads}", "{config}"]
+    gpu:
+      devices: ["0", "1", "2", "4", "5", "6", "7"]
+      threads_per_job: 2
+      command: ["{namd}", "+p{threads}", "+devices", "{device}", "{config}"]
+
+RiteWeight:
+  folders: []
+  dcd_pattern: "Unbiased.noh.[AB].dcd"
+  colvars_pattern: "unbias.[AB].colvars.traj"
+  tag_regex: '\.([AB])(?:\.|$)'
+  io:
+    top: "./Dataset/trp_noh.psf"
+    out: null
+    stride: 1
+  pairing:
+    allow_skip_first_colvars: true
+    strict: false
+  features:
+    mode: "internal_zmat"
+    internal_zmat:
+      atomselect: "protein and name CA"
+      atom_order: null
+      max_atoms: null
+      order: "index"
+    distances:
+      atom_pairs: []
+    cache:
+      enabled: true
+      format: "npz"
+      path: null
+      policy: "write_if_missing"
+  riteweight:
+    n_clusters: 100
+    n_iter: 50
+    tol: 1.0e-6
+    tol_window: 5
+    avg_last: 30
+    seed: 2026
+    lag: 50
+  colvars:
+    cv: ["RMSD_CA", "RMSD_hx"]
+    save_cols: "all"
+    periodic_cols: []
+    bins: [500, 500]
+    temperature_K: 290.0
+    xlim: [0.0, 15.0]
+    ylim: [0.0, 5.0]
+    periodicities: [false, false]
+  committor_labels:
+    enabled: true
+    cvs_to_label: ["RMSD_CA"]
+    basin_A: [0.0]
+    basin_B: [5.0]
+    basin_size: 1.0
+    k_prefactor: 1.0
+    angle_unit: "degree"
+  outputs:
+    frame_csv: "frame_weights.csv"
+    segment_csv: "segment_weights.csv"
+    convergence_plot: "convergence_delta.png"
+    vcn:
+      enabled: true
+      filename: "vcn_training.pt"
+    diffusion:
+      enabled: true
+      trajectory: "diffusion_training.dcd"
+      topology: "diffusion_training.pdb"
+      atomselect: "all"
+      alignment_atomselect: "protein and name CA"
+      chunk_size: 1000
+  pmf_output:
+    enabled: false
+    filename: "pmf.dat"
+    F_max: 10.0
+    sigma_bins: [1.0, 1.0]
+    scaled_bins: 100
+    scaled_filename: "pmf_scaled.dat"
+
+FEL_estimate:
+  input: null
+  output_dir: null
+  weight_column: "fel_weight"
+  temperature_K: 290.0
+  probability_floor: 1.0e-300
+  landscape_F_max: 10.0
+  projections:
+    - name: "RMSD_CA_RMSD_hx"
+      cvs: ["RMSD_CA", "RMSD_hx"]
+      bins: [500, 500]
+      ranges:
+        - [0.0, 15.0]
+        - [0.0, 5.0]
+      periodicities: [false, false]
+      sigma_bins: [1.0, 1.0]
+      F_max: 5.0
+    - name: "RMSD_hx_end_to_end"
+      cvs: ["RMSD_hx", "end_to_end"]
+      bins: [500, 500]
+      ranges:
+        - [0.0, 5.0]
+        - [0.0, 35.0]
+      periodicities: [false, false]
+      sigma_bins: [1.0, 1.0]
+      F_max: 5.0

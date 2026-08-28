@@ -24,6 +24,7 @@ Generative:
   data:
     dcd_path: "./output_riteweight/diffusion_training.dcd"
     topology_path: "./output_riteweight/diffusion_training.pdb"
+    alignment_atomselect: "all"            # RMSD fit selection; transform is applied to every atom
 
   model:
     node_feature_dim: 64                   # Dimension for node embeddings (residue, atom type, coords)

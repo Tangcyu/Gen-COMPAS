@@ -841,6 +841,11 @@ def write_diffusion_training_data(
                 chunk.superpose(reference, atom_indices=alignment_indices)
                 selected = chunk.atom_slice(atom_indices)
                 if not wrote_topology and selected.n_frames:
+                    # PDB stores residue names in three columns. Normalize
+                    # nonstandard four-character names (for example ALAD) in
+                    # generated topology artifacts while retaining atom order.
+                    for residue in selected.topology.residues:
+                        residue.name = residue.name[:3]
                     selected[0].save_pdb(topology_path, force_overwrite=True)
                     wrote_topology = True
 

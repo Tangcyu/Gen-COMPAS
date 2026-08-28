@@ -57,7 +57,8 @@ def setup_dataloader(data_cfg: dict, training_cfg: dict):
         raise ValueError("Generative.training.batch_size must be at least 1.")
     dataset = ProteinDataset(
         topology_path=topology_path,
-        dcd_path=data_cfg['dcd_path']
+        dcd_path=data_cfg['dcd_path'],
+        alignment_atomselect=data_cfg.get('alignment_atomselect', 'all'),
     )
     if len(dataset) == 0:
         raise ValueError("The diffusion training trajectory contains no frames.")
@@ -153,7 +154,9 @@ def train_diffusion_model(config: dict):
         yaml.dump(config, f)
     logger.info(f"Configuration saved to {config_path}")
 
-    # Prepare data and normalization constants
+    # ProteinDataset RMSD-aligns every frame to frame 0 before it computes
+    # normalization constants, so the saved tensors and training coordinates
+    # are derived from the same aligned trajectory.
     dataset, loader = setup_dataloader(data_cfg, training_cfg)
     coord_mean, coord_std = dataset.get_normalization_constants()
     torch.save(coord_mean.cpu(), os.path.join(save_dir, 'coord_mean.pt'))

@@ -121,6 +121,12 @@ Iterations 1+:
 
 <p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage retains generated frames within <code>0.5 +/- VCN.q_variance</code>, then selects <code>VCN.n_targets</code> number of candidates.</p>
 
+<p><strong>Initial unbiased-data prerequisite:</strong> Before iteration 0, run unbiased simulations starting independently in states A and B and combine representative frames from both trajectories into <code>Workflow.initial_diffusion_data.dcd_path</code>. Save coordinates frequently enough to preserve structural diversity and resolve the motion of interest; the example NAMD inputs use <code>dcdFreq 100</code>. The combined DCD must match <code>Workflow.initial_diffusion_data.topology_path</code> exactly in atom count and order. Restart coordinate/velocity files may be used when supplied. If they are absent, as in NANMA, initialize from the supplied A/B coordinate structures and temperature, equilibrate, and then collect the unbiased frames.</p>
+
+<p>For NANMA, the supplied <code>Initial.A.conf</code>/<code>Initial.B.conf</code> templates start from <code>A.pdb</code>/<code>B.pdb</code> plus <code>temperature 300</code> and do not require restart <code>.coor</code>/<code>.vel</code> files. Run the initial A/B simulations with the complete 22-atom NAMD system, then remove hydrogen atoms and concatenate the trajectories in the original heavy-atom order. The resulting 10-atom DCD is paired with the bundled <code>alad_heavy.psf</code>. Diffusion, VCN features, clustering, and RMSD fitting therefore use all 10 heavy atoms rather than the single <code>CA</code>. The later occupancy stage reconstructs a complete 22-atom target PDB for NAMD: all atoms are present, the 10 heavy atoms have occupancy 1 for TMD, and the 12 hydrogens have occupancy 0.</p>
+
+<p>Diffusion training rigidly RMSD-aligns every input frame to frame 0 before calculating <code>coord_mean.pt</code>/<code>coord_std.pt</code> and before normalization. <code>Generative.data.alignment_atomselect</code> controls the atoms used for the fit; the fitted transform is applied to every atom. The selection must contain at least three atoms. For nonstandard residues such as NANMA's original <code>ALAD</code>, avoid MDTraj's <code>protein</code> keyword and select atoms explicitly, for example <code>element != H</code>.</p>
+
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
 <li><code>Workflow.run_fel: false</code> removes <code>fel_estimate</code> from each schedule.</li>
@@ -286,6 +292,8 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 <li><strong>inference:</strong> Sampling configuration (checkpoint, output, batch size, etc.).</li>
 </ul>
 
+<p><code>Generative.data.alignment_atomselect</code> defaults to <code>all</code>. Alignment is completed before mean/std construction, so the saved normalization tensors and the coordinates seen during training are derived from the same aligned trajectory.</p>
+
 <h3>2. Variational Committor Network (VCN)</h3>
 
 <p>Train and evaluate a committor model to predict transition probabilities between states A and B.</p>
@@ -335,6 +343,8 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 </ul>
 
 <p>TMD templates may use <code>{{TMD_FORCE_CONSTANT}}</code> and <code>{{TARGET_PDB}}</code>. The runner also replaces active <code>TMDk</code> and <code>TMDFile</code> directives directly, so the existing example templates work without conversion.</p>
+
+<p>The occupancy selection controls which atoms are marked for TMD fitting and biasing; it does not remove unselected atoms from the target PDB. Check the retained <code>tmd.log</code> in every NAMD job directory and confirm that the reported fitted/biased atom count matches the intended occupancy selection. Hydrogen atoms should normally remain in the NAMD PDB with occupancy 0. When Gen-COMPAS writes a target PDB, residue names longer than three characters are normalized to the standard three-column form (for example <code>ALAD</code> becomes <code>ALA</code>) so the coordinates, occupancy, and beta fields stay in their required fixed columns.</p>
 
 <h3>6. RiteWeight (RiteWeight)</h3>
 

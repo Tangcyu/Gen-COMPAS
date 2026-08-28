@@ -77,7 +77,7 @@ Occupancy:
   topology_file: "./NAMD_inputs/TOP_files/input.psf"
   pdb_file: "./NAMD_inputs/TOP_files/input.pdb"
   add_hydrogens: true
-  selection: "protein and name CA CB CC CD CG CY CZ"
+  selection: "protein and (name CA or name CB or name CC or name CD or name CG or name CY or name CZ)"
 
 NAMD:
   namd_path: "namd3"

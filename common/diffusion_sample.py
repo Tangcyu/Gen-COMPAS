@@ -9,6 +9,7 @@ from tqdm import tqdm
 from utils.model import DiffusionModel
 from utils.diffusion import Diffusion
 from utils.logger import get_logger
+from utils.mdtraj_io import load_topology as quiet_md_load_topology
 
 logger = get_logger(__name__)
 
@@ -47,7 +48,7 @@ def setup_model_and_diffusion(config: dict, device: torch.device):
     logger.info("Loaded normalization constants (mean/std).")
 
     # Load topology
-    topology = md.load_topology(topology_path)
+    topology = quiet_md_load_topology(topology_path)
     num_atoms = topology.n_atoms
     atom_names = [atom.name for atom in topology.atoms]
     logger.info(f"Topology loaded: {num_atoms} atoms.")

@@ -14,6 +14,7 @@ def test_nanma_uses_ten_heavy_atoms_consistently():
     assert (project_root / "examples" / "1.NANMA" / initial["topology_path"]).is_file()
 
     assert config["VCN"]["atomselect"] == "element != H"
+    assert config["Clustering"]["atom_selection"] == "not name H*"
     assert config["Occupancy"]["selection"] == "element != H"
     assert (
         config["RiteWeight"]["features"]["internal_zmat"]["atomselect"]

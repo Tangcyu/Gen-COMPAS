@@ -4,6 +4,7 @@ import mdtraj as md
 import numpy as np
 from typing import Optional
 from tqdm import tqdm
+from utils.mdtraj_io import load as quiet_md_load
 
 
 # =========================================================
@@ -61,7 +62,7 @@ def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
 
 def load_reference(topology_file: str, pdb_file: str):
     """Load reference structure and topology."""
-    ref_traj = md.load(pdb_file, top=topology_file)
+    ref_traj = quiet_md_load(pdb_file, top=topology_file)
     if ref_traj.n_frames != 1:
         raise ValueError("Occupancy reference PDB must contain exactly one frame.")
     return ref_traj, ref_traj.topology, ref_traj.xyz
@@ -124,7 +125,7 @@ def hydrogenate_and_set_occupancy(
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
 
-        traj = md.load(input_path)
+        traj = quiet_md_load(input_path)
         num_frames = traj.n_frames
         xyz = traj.xyz
         top = traj.topology
@@ -184,7 +185,7 @@ def set_occupancy_only(
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
 
-        traj = md.load(input_path, top=topology_file)
+        traj = quiet_md_load(input_path, top=topology_file)
         num_frames = traj.n_frames
         if traj.n_atoms != ref_top.n_atoms:
             raise ValueError(

@@ -20,9 +20,6 @@ Workflow:
   run_fel: true
   warm_start_diffusion: true
   isolate_steps: true
-  # Checked against the active source sampling/0.yaml files and generated
-  # outputs for iterations 0--4. Auxiliary N2 trials are retained in source
-  # but were not the selected generated branch for iterations 1, 3, or 4.
   iteration_noise_scales: {0: 2.0, 1: 4.0, 2: 2.0, 3: 1.5, 4: 4.0}
   iteration_diffusion_epochs: {0: 50, 1: 50, 2: 20, 3: 10, 4: 10}
 

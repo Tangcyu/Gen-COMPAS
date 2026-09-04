@@ -5,7 +5,7 @@
 <h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
 
 <p align="center">
-<img src="figures/scheme.png" alt="Gen-COMPAS workflow" width="500">
+<img src="figures/Gen-COMPAS.pdf" alt="Gen-COMPAS workflow" width="500">
 </p>
 
 <p>

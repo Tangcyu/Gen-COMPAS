@@ -3,27 +3,32 @@
 #   gen-compas --config nanma.workflow.yaml --iteration 0 1 2 3 4 --stepwise
 #
 # The initial trajectory is intentionally not bundled in the public example.
-# Provide the two files below before running iteration 0.
+# Before iteration 0, run unbiased simulations from both TOP_files/A.pdb and
+# TOP_files/B.pdb, saving frames frequently (the templates use dcdFreq 100).
+# Remove hydrogens and concatenate both trajectories, without changing heavy-
+# atom order, as ./input/alad_unbiased_heavy.dcd. The matching 10-heavy-atom
+# topology is bundled below; restart coordinate/velocity files are not, so a
+# fresh initial run must start from the supplied coordinates and temperature.
 
 Workflow:
   root_dir: "./workflow_output"
   initial_data_folders: []
   initial_diffusion_data:
-    dcd_path: "./input/alad_unbiased_noh.dcd"
-    topology_path: "./input/alad_noh.psf"
+    dcd_path: "./input/alad_unbiased_heavy.dcd"
+    topology_path: "./NAMD_inputs/TOP_files/alad_heavy.psf"
   run_initial_unbiased: false
   run_fel: true
   warm_start_diffusion: true
   isolate_steps: true
-  # Checked against the active source sampling/0.yaml files and generated
-  # outputs for iterations 0--4. Auxiliary N2 trials are retained in source
-  # but were not the selected generated branch for iterations 1, 3, or 4.
   iteration_noise_scales: {0: 2.0, 1: 4.0, 2: 2.0, 3: 1.5, 4: 4.0}
   iteration_diffusion_epochs: {0: 50, 1: 50, 2: 20, 3: 10, 4: 10}
 
 Generative:
   device: "cuda:0"
   random_seed: 42
+  data:
+    # The trajectory itself contains exactly the 10 non-hydrogen atoms.
+    alignment_atomselect: "all"
   model:
     node_feature_dim: 64
     time_embedding_dim: 128
@@ -50,7 +55,7 @@ Generative:
 
 VCN:
   device: "cuda:0"
-  atomselect: "protein and name CA"
+  atomselect: "element != H"
   stride: 1
   time_shift: 2
   cvs: ["phi", "psi", "theta"]
@@ -66,7 +71,7 @@ VCN:
   require_n_targets: true
 
 Clustering:
-  atom_selection: "protein and name CA"
+  atom_selection: "not name H*"
   n_clusters: 10
   n_per_cluster: 1
   max_k: 20
@@ -76,7 +81,7 @@ Occupancy:
   topology_file: "./NAMD_inputs/TOP_files/alad.psf"
   pdb_file: "./NAMD_inputs/TOP_files/alad.pdb"
   add_hydrogens: true
-  selection: "protein and name CA"
+  selection: "element != H"
 
 NAMD:
   namd_path: "namd3"
@@ -87,11 +92,11 @@ NAMD:
     - name: "A"
       tmd_template: "TMD.A.conf"
       unbiased_template: "Unbiased.A.conf"
-      initial_unbiased_template: "Unbiased.A.conf"
+      initial_unbiased_template: "Initial.A.conf"
     - name: "B"
       tmd_template: "TMD.B.conf"
       unbiased_template: "Unbiased.B.conf"
-      initial_unbiased_template: "Unbiased.B.conf"
+      initial_unbiased_template: "Initial.B.conf"
   phases:
     tmd: true
     unbiased: true
@@ -106,7 +111,8 @@ RiteWeight:
   colvars_pattern: "*Unbias.[AB].colvars.traj"
   tag_regex: "\\.([AB])(?:\\.|$)"
   io:
-    topology: "./input/alad_noh.psf"
+    # NAMD trajectories contain all 22 atoms; diffusion output below strips H.
+    topology: "./NAMD_inputs/TOP_files/alad.psf"
     stride: 1
   pairing:
     allow_skip_first_colvars: true
@@ -114,7 +120,7 @@ RiteWeight:
   features:
     mode: "internal_zmat"
     internal_zmat:
-      atomselect: "protein and name CA"
+      atomselect: "element != H"
       atom_order: null
       max_atoms: null
       order: "index"
@@ -140,6 +146,10 @@ RiteWeight:
     basin_size: 5.0
     k_prefactor: 1.0
     angle_unit: "degree"
+  outputs:
+    diffusion:
+      atomselect: "element != H"
+      alignment_atomselect: "element != H"
 
 FEL_estimate:
   temperature_K: 300.0

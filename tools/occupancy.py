@@ -4,6 +4,7 @@ import mdtraj as md
 import numpy as np
 from typing import Optional
 from tqdm import tqdm
+from utils.mdtraj_io import load as quiet_md_load
 
 
 # =========================================================
@@ -34,6 +35,10 @@ def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
             res = atom.residue
             chain = getattr(res.chain, "chain_id", None) or chr(65 + res.chain.index % 26)
             residue_number = getattr(res, "resSeq", None) or res.index + 1
+            # PDB residue names occupy exactly three columns. Truncating names
+            # such as ALAD to ALA keeps all later fixed-width fields where
+            # NAMD's TMD reader expects them.
+            residue_name = str(res.name)[:3]
             coord = traj.xyz[0, i] * 10.0  # nm → Å
             occupancy = occupancies[0, i]  # assumes single frame
             element = atom.element.symbol if atom.element is not None else atom.name[:1]
@@ -41,7 +46,7 @@ def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
                 "ATOM  {:5d} {:>4s} {:>3s} {:1s}{:4d}    {:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}          {:>2s}\n".format(
                     atom.index + 1,
                     atom.name,
-                    res.name,
+                    residue_name,
                     chain[:1],
                     residue_number,
                     coord[0],
@@ -57,7 +62,7 @@ def write_pdb_with_custom_occupancy(traj, occupancies, out_path: str):
 
 def load_reference(topology_file: str, pdb_file: str):
     """Load reference structure and topology."""
-    ref_traj = md.load(pdb_file, top=topology_file)
+    ref_traj = quiet_md_load(pdb_file, top=topology_file)
     if ref_traj.n_frames != 1:
         raise ValueError("Occupancy reference PDB must contain exactly one frame.")
     return ref_traj, ref_traj.topology, ref_traj.xyz
@@ -120,7 +125,7 @@ def hydrogenate_and_set_occupancy(
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
 
-        traj = md.load(input_path)
+        traj = quiet_md_load(input_path)
         num_frames = traj.n_frames
         xyz = traj.xyz
         top = traj.topology
@@ -180,7 +185,7 @@ def set_occupancy_only(
         input_path = os.path.join(pdb_dir, pdb_file)
         output_path = os.path.join(output_dir, pdb_file)
 
-        traj = md.load(input_path, top=topology_file)
+        traj = quiet_md_load(input_path, top=topology_file)
         num_frames = traj.n_frames
         if traj.n_atoms != ref_top.n_atoms:
             raise ValueError(

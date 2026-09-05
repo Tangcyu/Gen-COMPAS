@@ -1,4 +1,10 @@
-"""MDTraj loaders with selected native DCD-plugin chatter filtered out."""
+"""Single entry point for MDTraj file and topology reads.
+
+Trajectory readers suppress two known informational lines emitted by the
+native DCD plugin. Topology loading does not need native-output filtering, but
+is exposed here as well so production code does not call MDTraj readers
+directly in multiple places.
+"""
 
 from __future__ import annotations
 
@@ -93,6 +99,13 @@ def load_frame(*args, **kwargs):
 
     with filter_dcdplugin_messages():
         return md.load_frame(*args, **kwargs)
+
+
+def load_topology(*args, **kwargs):
+    """Load an MDTraj topology through the shared MD I/O interface."""
+    import mdtraj as md
+
+    return md.load_topology(*args, **kwargs)
 
 
 def iterload(*args, **kwargs):

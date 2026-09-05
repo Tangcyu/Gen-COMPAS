@@ -48,7 +48,7 @@ Generative:
 
 VCN:
   device: "cuda:0"
-  atomselect: "protein and name CA"
+  atomselect: "(protein and name CA) or (resname ADP and (name N1 or name C4 or name PA or name PB))"
   stride: 10
   time_shift: 2
   cvs: ["coplanar_1", "coplanar_2", "ADP_coplanar_1", "ADP_coplanar_2"]
@@ -64,7 +64,7 @@ VCN:
   require_n_targets: true
 
 Clustering:
-  atom_selection: "protein and name CA"
+  atom_selection: "(protein and name CA) or (resname ADP and (name N1 or name C4 or name PA or name PB))"
   n_clusters: 10
   n_per_cluster: 1
   max_k: 20
@@ -74,7 +74,7 @@ Occupancy:
   topology_file: "./NAMD_inputs/TOP_files/input.psf"
   pdb_file: "./NAMD_inputs/TOP_files/input.pdb"
   add_hydrogens: true
-  selection: "protein and name CA"
+  selection: "(protein and name CA) or (resname ADP and (name N1 or name C4 or name PA or name PB))"
 
 NAMD:
   namd_path: "namd3"
@@ -116,7 +116,7 @@ RiteWeight:
   features:
     mode: "internal_zmat"
     internal_zmat:
-      atomselect: "protein and name CA"
+      atomselect: "(protein and name CA) or (resname ADP and (name N1 or name C4 or name PA or name PB))"
       atom_order: null
       max_atoms: null
       order: "index"
@@ -142,6 +142,10 @@ RiteWeight:
     basin_size: 2.0
     k_prefactor: 1.0
     angle_unit: "degree"
+  outputs:
+    diffusion:
+      atomselect: "(protein or resname ADP) and element != H"
+      alignment_atomselect: "(protein and name CA) or (resname ADP and (name N1 or name C4 or name PA or name PB))"
 
 FEL_estimate:
   temperature_K: 300.0

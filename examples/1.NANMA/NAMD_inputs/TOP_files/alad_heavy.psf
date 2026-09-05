@@ -1,0 +1,51 @@
+PSF
+
+       2 !NTITLE
+* ALANINE DIPEPTIDE HEAVY-ATOM TOPOLOGY FOR DIFFUSION TRAINING
+* DERIVED FROM ALAD.PSF; ATOM ORDER IS PRESERVED
+
+      10 !NATOM
+       1 AD   1    ALA  CL   CT3   -0.270000       12.0110           0
+       2 AD   1    ALA  CLP  C      0.510000       12.0110           0
+       3 AD   1    ALA  OL   O     -0.510000       15.9990           0
+       4 AD   1    ALA  NL   NH1   -0.470000       14.0070           0
+       5 AD   1    ALA  CA   CT1    0.070000       12.0110           0
+       6 AD   1    ALA  CB   CT3   -0.270000       12.0110           0
+       7 AD   1    ALA  CRP  C      0.510000       12.0110           0
+       8 AD   1    ALA  OR   O     -0.510000       15.9990           0
+       9 AD   1    ALA  NR   NH1   -0.470000       14.0070           0
+      10 AD   1    ALA  CR   CT3   -0.110000       12.0110           0
+
+       9 !NBOND: bonds
+       1       2       2       3       2       4       4       5
+       5       6       5       7       7       8       7       9
+       9      10
+
+      11 !NTHETA: angles
+       1       2       3       1       2       4       3       2       4
+       2       4       5       4       5       6       4       5       7
+       6       5       7       5       7       8       5       7       9
+       8       7       9       7       9      10
+
+       7 !NPHI: dihedrals
+       1       2       4       5       3       2       4       5
+       4       5       7       8       4       5       7       9
+       6       5       7       8       6       5       7       9
+       5       7       9      10
+
+       2 !NIMPHI: impropers
+       2       1       4       3       7       5       9       8
+
+       0 !NDON: donors
+
+       0 !NACC: acceptors
+
+       0 !NNB
+
+       0       0 !NGRP NST2
+
+       1 !MOLNT
+       1       1       1       1       1       1       1       1
+       1       1
+
+       0       0 !NUMLP NUMLPH

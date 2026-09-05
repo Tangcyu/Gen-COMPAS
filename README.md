@@ -5,7 +5,7 @@
 <h1>Gen-COMPAS: Generative committor-guided path sampling for rare events </h1>
 
 <p align="center">
-<img src="figures/scheme.png" alt="Gen-COMPAS workflow" width="500">
+<img src="figures/Gen-COMPAS.png" alt="Gen-COMPAS workflow" width="1000">
 </p>
 
 <p>
@@ -120,6 +120,8 @@ Iterations 1+:
 </code></pre>
 
 <p>Iteration 0 trains diffusion from <code>Workflow.initial_diffusion_data</code>, generates and clusters targets, runs TMD followed by unbiased simulations, and produces the first RiteWeight result. Iterations 1 and later use the preceding RiteWeight outputs as diffusion and VCN training data. Their committor-slice stage retains generated frames within <code>0.5 +/- VCN.q_variance</code>, then selects <code>VCN.n_targets</code> number of candidates.</p>
+
+<p><strong>Initial-data prerequisite:</strong> Before iteration 0, run unbiased simulations initialized independently from states A and B, save frames frequently enough to resolve the motion of interest, and combine both trajectories into <code>Workflow.initial_diffusion_data.dcd_path</code>. The DCD and topology must have identical atom counts and ordering. If restart coordinates and velocities are unavailable, initialize from the state structure and temperature, equilibrate, and then collect training frames.</p>
 
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
@@ -286,6 +288,8 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 <li><strong>inference:</strong> Sampling configuration (checkpoint, output, batch size, etc.).</li>
 </ul>
 
+<p><code>Generative.data.alignment_atomselect</code> defaults to <code>all</code>. Alignment is completed before mean/std construction, so the saved normalization tensors and the coordinates seen during training are derived from the same aligned trajectory.</p>
+
 <h3>2. Variational Committor Network (VCN)</h3>
 
 <p>Train and evaluate a committor model to predict transition probabilities between states A and B.</p>
@@ -318,8 +322,8 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 <ul>
 <li><strong>pdb_dir:</strong> Workflow-managed generated target PDBs, normally without hydrogen atoms.</li>
 <li><strong>topology_file, pdb_file:</strong> Matching reference topology and coordinate PDB that include hydrogen atoms and supply the complete atom set.</li>
-<li><strong>add_hydrogens:</strong> Whether to add hydrogens. <em>(Notice: Only for formatting, do NOT use hydrogens for TMD simulations)</em></li>
-<li><strong>selection:</strong> MDTraj/MDAnalysis selection string for occupancy.</li>
+<li><strong>add_hydrogens:</strong> Whether to reconstruct the complete atom set, including hydrogens, before writing target PDB files.</li>
+<li><strong>selection:</strong> MDTraj selection for atoms assigned occupancy 1; unselected atoms remain in the output PDB with occupancy 0.</li>
 </ul>
 
 <h3>5. NAMD Sampling (NAMD)</h3>

@@ -27,7 +27,11 @@ DEFAULT_CONFIG = {
         "device": "cuda:0",
         "random_seed": 42,
         "init_checkpoint_path": None,
-        "data": {"dcd_path": None, "topology_path": None},
+        "data": {
+            "dcd_path": None,
+            "topology_path": None,
+            "alignment_atomselect": "all",
+        },
         "model": {
             "node_feature_dim": 64,
             "time_embedding_dim": 128,

@@ -21,6 +21,7 @@ from tools.tensor_table import save_tensor_table
 from utils.mdtraj_io import iterload as quiet_md_iterload
 from utils.mdtraj_io import load as quiet_md_load
 from utils.mdtraj_io import load_frame as quiet_md_load_frame
+from utils.mdtraj_io import load_topology as quiet_md_load_topology
 
 try:
     import yaml
@@ -801,7 +802,7 @@ def write_diffusion_training_data(
     chunk_size: int,
 ):
     """RMSD-align RiteWeight frames, then write a selected DCD and topology."""
-    topology = md.load_topology(top_path)
+    topology = quiet_md_load_topology(top_path)
     if atomselect:
         atom_indices = topology.select(atomselect)
     else:
@@ -841,6 +842,11 @@ def write_diffusion_training_data(
                 chunk.superpose(reference, atom_indices=alignment_indices)
                 selected = chunk.atom_slice(atom_indices)
                 if not wrote_topology and selected.n_frames:
+                    # PDB stores residue names in three columns. Normalize
+                    # nonstandard four-character names (for example ALAD) in
+                    # generated topology artifacts while retaining atom order.
+                    for residue in selected.topology.residues:
+                        residue.name = residue.name[:3]
                     selected[0].save_pdb(topology_path, force_overwrite=True)
                     wrote_topology = True
 
@@ -982,7 +988,7 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
     lag = int(rw.get("lag", 50))
 
     # We resolve atomselect based on topology once (deterministic).
-    top_for_sel = md.load_topology(top_path)
+    top_for_sel = quiet_md_load_topology(top_path)
 
     zmat_atom_order: Optional[List[int]] = None
     if feat_mode in ("internal_zmat", "internal_zmat_cached"):

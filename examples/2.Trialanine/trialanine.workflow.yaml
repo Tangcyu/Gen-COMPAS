@@ -22,6 +22,9 @@ Workflow:
 Generative:
   device: "cuda:0"
   random_seed: 42
+  data:
+    # The iteration-0 and RiteWeight diffusion trajectories contain 20 heavy atoms.
+    alignment_atomselect: "all"
   model:
     node_feature_dim: 64
     time_embedding_dim: 128
@@ -48,7 +51,7 @@ Generative:
 
 VCN:
   device: "cuda:0"
-  atomselect: "protein and name CA"
+  atomselect: "element != H"
   stride: 1
   time_shift: 2
   cvs: ["phi1", "phi2", "phi3"]
@@ -64,7 +67,7 @@ VCN:
   require_n_targets: true
 
 Clustering:
-  atom_selection: "protein and name CA"
+  atom_selection: "not name H*"
   n_clusters: 10
   n_per_cluster: 1
   max_k: 20
@@ -74,7 +77,7 @@ Occupancy:
   topology_file: "./NAMD_inputs/TOP_files/triala.psf"
   pdb_file: "./NAMD_inputs/TOP_files/triala.pdb"
   add_hydrogens: true
-  selection: "protein and name CA"
+  selection: "element != H"
 
 NAMD:
   namd_path: "namd3"
@@ -104,7 +107,8 @@ RiteWeight:
   colvars_pattern: "*Unbias.[AB].colvars.traj"
   tag_regex: "\\.([AB])(?:\\.|$)"
   io:
-    topology: "./input/triala_noh.psf"
+    # NAMD trajectories contain 42 atoms; diffusion output below strips H.
+    topology: "./NAMD_inputs/TOP_files/triala.psf"
     stride: 1
   pairing:
     allow_skip_first_colvars: true
@@ -112,7 +116,7 @@ RiteWeight:
   features:
     mode: "internal_zmat"
     internal_zmat:
-      atomselect: "protein and name CA"
+      atomselect: "element != H"
       atom_order: null
       max_atoms: null
       order: "index"
@@ -138,6 +142,10 @@ RiteWeight:
     basin_size: 20.0
     k_prefactor: 1.0
     angle_unit: "degree"
+  outputs:
+    diffusion:
+      atomselect: "element != H"
+      alignment_atomselect: "element != H"
 
 FEL_estimate:
   temperature_K: 300.0

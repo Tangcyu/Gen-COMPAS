@@ -126,7 +126,7 @@ Iterations 1+:
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
 <li><code>Workflow.run_fel: false</code> removes <code>fel_estimate</code> from each schedule.</li>
-<li><code>Workflow.warm_start_diffusion: true</code> initializes iteration N diffusion weights from iteration N-1 <code>best_model.pt</code>. It does not restore optimizer, scheduler, or epoch state.</li>
+<li><code>Workflow.warm_start_diffusion: true</code> initializes iteration N diffusion weights from iteration N-1 <code>best_model.pt</code>. It also inherits the canonical coordinate reference, ordered topology signature, alignment selection, and normalization constants stored in <code>coordinate_contract.pt</code>. Incompatible atom ordering or bonds stop training before weights are reused. Optimizer, scheduler, and epoch state are not restored.</li>
 <li><code>Workflow.isolate_steps: true</code> runs regular stages in clean Python child processes, releasing GPU/native-library state between stages.</li>
 </ul>
 
@@ -282,8 +282,11 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 <p><strong>Key subsections:</strong></p>
 <ul>
 <li><strong>data:</strong> Input trajectory and topology paths.</li>
-<li><strong>model:</strong> Embedding and architecture parameters (SchNet and attention layers).</li>
+<li><strong>coordinate_contract:</strong> Canonical reference, topology validation, alignment selection, and fixed warm-start normalization. Managed workflows resolve <code>source</code> automatically.</li>
+<li><strong>model:</strong> Local SchNet/residue-attention parameters plus the hierarchical segment graph. Atom k-NN and residue attention operate within topology chains; complete segment layers exchange distance/displacement-aware context between chains even when they are spatially separated.</li>
 <li><strong>diffusion:</strong> Diffusion model hyperparameters (timesteps, beta schedule).</li>
+<li><strong>Multi-molecule inputs:</strong> Segment identity is the topology chain index, not an inferred bond-connected molecule or PSF segid. Put interacting entities in distinct topology chains and keep them together in every training frame and export selection. Residue embeddings encode fixed topology indices, not pretrained sequence embeddings. Segment geometry is computed from noisy, normalized coordinates at every denoising step. Old checkpoints can initialize training, but sampling requires all new segment parameters to have been trained.</li>
+<li><strong>Scope:</strong> This model generates joint configurations for a fixed topology. Diffusion timesteps are denoising steps, not physical time or an unbound-to-bound reaction coordinate. Learning binding configurations requires representative joint training data; the architecture alone does not establish transition kinetics or a physical binding pathway. Coordinate alignment applies one rigid transform to the full complex, preserving inter-chain placement before normalization.</li>
 <li><strong>training:</strong> Optimization and logging parameters.</li>
 <li><strong>inference:</strong> Sampling configuration (checkpoint, output, batch size, etc.).</li>
 </ul>
@@ -355,6 +358,8 @@ Compute statistical weights and aligned training artifacts using the
 <li><strong>colvars:</strong> CV retention and optional periodic encodings.</li>
 <li><strong>outputs:</strong> Torch VCN table and selected DCD/PDB files for diffusion training.</li>
 </ul>
+
+<p>In a managed workflow, the diffusion export is aligned to the current model's inherited <code>canonical_reference.pdb</code>, rather than to the first frame of each newly collected dataset. One rigid transform is applied to the complete selected complex, preserving relative segment placement.</p>
 
 <p>RiteWeight records a numeric trajectory identifier and frame number in its VCN table. Lagged VCN samples are formed independently within each source trajectory, never across NAMD-job boundaries.</p>
 

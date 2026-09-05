@@ -15,6 +15,11 @@ from tqdm import tqdm
 
 # Project imports
 from utils.data_loader import ProteinDataset
+from utils.coordinate_contract import (
+    create_coordinate_contract,
+    load_coordinate_contract,
+    save_coordinate_contract,
+)
 from utils.model import DiffusionModel
 from utils.diffusion import Diffusion, center_coords
 from utils.logger import get_logger
@@ -45,7 +50,12 @@ def setup_device(device_str: str) -> torch.device:
     return device
 
 
-def setup_dataloader(data_cfg: dict, training_cfg: dict):
+def setup_dataloader(
+    data_cfg: dict,
+    training_cfg: dict,
+    coordinate_contract: dict = None,
+    alignment_atomselect: str = None,
+):
     """Initialize the dataset and data loader."""
     topology_path = data_cfg.get('topology_path') or data_cfg.get('psf_path')
     if not topology_path:
@@ -58,7 +68,8 @@ def setup_dataloader(data_cfg: dict, training_cfg: dict):
     dataset = ProteinDataset(
         topology_path=topology_path,
         dcd_path=data_cfg['dcd_path'],
-        alignment_atomselect=data_cfg.get('alignment_atomselect', 'all'),
+        coordinate_contract=coordinate_contract,
+        alignment_atomselect=alignment_atomselect or data_cfg.get('alignment_atomselect', 'all'),
     )
     if len(dataset) == 0:
         raise ValueError("The diffusion training trajectory contains no frames.")
@@ -74,6 +85,35 @@ def setup_dataloader(data_cfg: dict, training_cfg: dict):
     return dataset, loader
 
 
+def _load_warm_start_weights(model, init_ckpt: str, device: torch.device):
+    """Load learned weights without replacing topology-derived model buffers."""
+    loaded = torch.load(init_ckpt, map_location=device)
+    state_dict = loaded.get("model_state_dict", loaded) if isinstance(loaded, dict) else loaded
+    if not isinstance(state_dict, dict):
+        raise ValueError(f"Checkpoint does not contain a model state dict: {init_ckpt}")
+    topology_buffers = {
+        "residue_indices",
+        "atom_types_mapped",
+        "base_edges",
+        "atom_segment_indices",
+        "residue_segment_indices",
+    }
+    state_dict = {
+        key: value for key, value in state_dict.items() if key not in topology_buffers
+    }
+    incompatible = model.load_state_dict(state_dict, strict=False)
+    if incompatible.unexpected_keys:
+        raise ValueError(
+            "Warm-start checkpoint has unexpected model parameters: "
+            + ", ".join(incompatible.unexpected_keys)
+        )
+    if incompatible.missing_keys:
+        logger.info(
+            "Warm start initialized new architecture parameters: %s",
+            ", ".join(incompatible.missing_keys),
+        )
+
+
 def setup_model(model_cfg: dict, dataset, device: torch.device, init_ckpt: str = None):
     """Create and initialize the diffusion model."""
     model = DiffusionModel(
@@ -86,11 +126,13 @@ def setup_model(model_cfg: dict, dataset, device: torch.device, init_ckpt: str =
         num_schnet_layers=model_cfg['num_schnet_layers'],
         num_gat_layers=model_cfg['num_gat_layers'],
         residue_attn_heads=model_cfg['residue_attn_heads'],
-        k_neighbors=model_cfg['k_neighbors']
+        k_neighbors=model_cfg['k_neighbors'],
+        num_segment_layers=model_cfg.get('num_segment_layers', 2),
+        segment_distance_rbf=model_cfg.get('segment_distance_rbf', 16),
     ).to(device)
 
     if init_ckpt:
-        model.load_state_dict(torch.load(init_ckpt, map_location=device))
+        _load_warm_start_weights(model, init_ckpt, device)
         logger.info(f"Loaded model weights from checkpoint: {init_ckpt}")
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -147,6 +189,17 @@ def train_diffusion_model(config: dict):
     if save_interval < 1:
         raise ValueError("Generative.training.save_interval must be at least 1.")
     init_ckpt = config.get('init_checkpoint_path', None)
+    contract_cfg = config.get("coordinate_contract", {})
+    contract_enabled = bool(contract_cfg.get("enabled", True))
+    contract_source = contract_cfg.get("source")
+    if init_ckpt and contract_enabled and not contract_source:
+        contract_source = os.path.join(
+            os.path.dirname(init_ckpt),
+            contract_cfg.get("filename", "coordinate_contract.pt"),
+        )
+    coordinate_contract = (
+        load_coordinate_contract(contract_source) if contract_enabled else None
+    )
 
     # Save configuration for reproducibility
     config_path = os.path.join(save_dir, datetime.now().strftime('%Y%m%d_%H%M%S_config.yaml'))
@@ -154,11 +207,36 @@ def train_diffusion_model(config: dict):
         yaml.dump(config, f)
     logger.info(f"Configuration saved to {config_path}")
 
-    # ProteinDataset RMSD-aligns every frame to frame 0 before it computes
-    # normalization constants, so the saved tensors and training coordinates
-    # are derived from the same aligned trajectory.
-    dataset, loader = setup_dataloader(data_cfg, training_cfg)
+    # Prepare data and normalization constants
+    dataset, loader = setup_dataloader(
+        data_cfg,
+        training_cfg,
+        coordinate_contract=coordinate_contract,
+        alignment_atomselect=contract_cfg.get("alignment_atomselect"),
+    )
     coord_mean, coord_std = dataset.get_normalization_constants()
+    if contract_enabled and coordinate_contract is None:
+        coordinate_contract = create_coordinate_contract(
+            topology=dataset.topology,
+            reference_xyz=dataset.reference_xyz,
+            alignment_atom_indices=dataset.alignment_atom_indices,
+            coord_mean=coord_mean,
+            coord_std=coord_std,
+        )
+    if coordinate_contract is not None:
+        save_coordinate_contract(
+            coordinate_contract,
+            os.path.join(
+                save_dir,
+                contract_cfg.get("filename", "coordinate_contract.pt"),
+            ),
+            os.path.join(
+                save_dir,
+                contract_cfg.get("reference_filename", "canonical_reference.pdb"),
+            ),
+            dataset.topology,
+        )
+        logger.info("Saved canonical coordinate contract and reference structure.")
     torch.save(coord_mean.cpu(), os.path.join(save_dir, 'coord_mean.pt'))
     torch.save(coord_std.cpu(), os.path.join(save_dir, 'coord_std.pt'))
     logger.info("Saved normalization constants (mean/std).")

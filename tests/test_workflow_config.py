@@ -55,6 +55,14 @@ def test_later_iteration_uses_previous_cumulative_data(tmp_path):
     assert config["Generative"]["init_checkpoint_path"].endswith(
         "1st.Iteration/models/diffusion/best_model.pt"
     )
+    assert config["Generative"]["coordinate_contract"]["source"].endswith(
+        "1st.Iteration/models/diffusion/coordinate_contract.pt"
+    )
+    assert config["RiteWeight"]["outputs"]["diffusion"][
+        "reference_path"
+    ].endswith(
+        "2nd.Iteration/models/diffusion/canonical_reference.pdb"
+    )
 
 
 def test_iteration_noise_scale_override_and_fallback(tmp_path):

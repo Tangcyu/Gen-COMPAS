@@ -32,6 +32,13 @@ DEFAULT_CONFIG = {
             "topology_path": None,
             "alignment_atomselect": "all",
         },
+        "coordinate_contract": {
+            "enabled": True,
+            "source": None,
+            "filename": "coordinate_contract.pt",
+            "reference_filename": "canonical_reference.pdb",
+            "alignment_atomselect": None,
+        },
         "model": {
             "node_feature_dim": 64,
             "time_embedding_dim": 128,
@@ -40,6 +47,8 @@ DEFAULT_CONFIG = {
             "num_gat_layers": 2,
             "residue_attn_heads": 4,
             "k_neighbors": 16,
+            "num_segment_layers": 2,
+            "segment_distance_rbf": 16,
         },
         "diffusion": {"timesteps": 200, "beta_schedule": "cosine"},
         "training": {
@@ -211,6 +220,7 @@ DEFAULT_CONFIG = {
                 "topology": "diffusion_training.pdb",
                 "atomselect": "protein and not element H",
                 "alignment_atomselect": None,
+                "reference_path": None,
                 "chunk_size": 1000,
             },
         },
@@ -428,8 +438,17 @@ def resolve_iteration_config(config: Mapping[str, Any], iteration: int) -> dict:
         generative["init_checkpoint_path"] = str(
             previous_dir / "models" / "diffusion" / "best_model.pt"
         )
+        generative["coordinate_contract"]["source"] = str(
+            previous_dir
+            / "models"
+            / "diffusion"
+            / generative["coordinate_contract"].get(
+                "filename", "coordinate_contract.pt"
+            )
+        )
     else:
         generative["init_checkpoint_path"] = None
+        generative["coordinate_contract"]["source"] = None
 
     vcn = resolved["VCN"]
     vcn.update(
@@ -476,6 +495,15 @@ def resolve_iteration_config(config: Mapping[str, Any], iteration: int) -> dict:
     riteweight["features"]["cache"]["path"] = str(
         paths["riteweight"] / "features_internal_zmat.npz"
     )
+    if generative["coordinate_contract"].get("enabled", True):
+        riteweight["outputs"]["diffusion"]["reference_path"] = str(
+            paths["diffusion_model"]
+            / generative["coordinate_contract"].get(
+                "reference_filename", "canonical_reference.pdb"
+            )
+        )
+    else:
+        riteweight["outputs"]["diffusion"]["reference_path"] = None
 
     fel = resolved["FEL_estimate"]
     fel["input"] = str(paths["riteweight"] / riteweight["outputs"]["vcn"]["filename"])

@@ -173,6 +173,68 @@ class SchNetLayer(nn.Module):
         return h_update
 
 
+class SegmentInteractionLayer(nn.Module):
+    """Complete-graph message passing between molecular segments/entities."""
+
+    def __init__(self, node_dim: int, hidden_dim: int, num_rbf: int):
+        super().__init__()
+        if num_rbf < 1:
+            raise ValueError("segment_distance_rbf must be at least 1.")
+        self.register_buffer(
+            "rbf_centers",
+            torch.linspace(0.0, 8.0, num_rbf),
+            persistent=False,
+        )
+        self.message_net = nn.Sequential(
+            nn.Linear(node_dim * 2 + num_rbf + 3, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, node_dim),
+        )
+        self.update_net = nn.Sequential(
+            nn.Linear(node_dim * 2, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, node_dim),
+        )
+        self.norm = nn.LayerNorm(node_dim)
+        self.gate = nn.Parameter(torch.tensor(0.0))
+
+    def forward(
+        self, segment_h: torch.Tensor, segment_centers: torch.Tensor
+    ) -> torch.Tensor:
+        """Update every segment from all other segments with geometric features."""
+        _, num_segments, _ = segment_h.shape
+        if num_segments <= 1:
+            return segment_h
+
+        target_h = segment_h.unsqueeze(2).expand(-1, -1, num_segments, -1)
+        source_h = segment_h.unsqueeze(1).expand(-1, num_segments, -1, -1)
+        relative = (
+            segment_centers.unsqueeze(1) - segment_centers.unsqueeze(2)
+        )
+        distances = torch.linalg.vector_norm(relative, dim=-1, keepdim=True)
+        width = (
+            self.rbf_centers[1] - self.rbf_centers[0]
+            if self.rbf_centers.numel() > 1
+            else self.rbf_centers.new_tensor(1.0)
+        )
+        rbf = torch.exp(
+            -((distances - self.rbf_centers.view(1, 1, 1, -1)) / width) ** 2
+        )
+        pair_features = torch.cat(
+            [target_h, source_h, rbf, relative], dim=-1
+        )
+        messages = self.message_net(pair_features)
+        mask = ~torch.eye(
+            num_segments, device=segment_h.device, dtype=torch.bool
+        )
+        messages = messages * mask.view(1, num_segments, num_segments, 1)
+        aggregate = messages.sum(dim=2) / float(num_segments - 1)
+        update = self.update_net(torch.cat([segment_h, aggregate], dim=-1))
+        return self.norm(segment_h + torch.sigmoid(self.gate) * update)
+
+
 
 class DiffusionModel(nn.Module):
     def __init__(
@@ -186,13 +248,16 @@ class DiffusionModel(nn.Module):
         num_schnet_layers: int = 3,   
         num_gat_layers: int = 2,       
         residue_attn_heads: int = 4,   
-        k_neighbors: int = 16        
+        k_neighbors: int = 16,
+        num_segment_layers: int = 2,
+        segment_distance_rbf: int = 16,
     ):
         super().__init__()
         self.num_atoms = num_atoms
         self.k_neighbors = k_neighbors
         self.node_feature_dim = node_feature_dim
         self.hidden_dim = hidden_dim
+        self.num_segment_layers = int(num_segment_layers)
 
         # Process atom types and build lookup table
         self.unique_atom_types = sorted(list(set(atom_types)))
@@ -205,6 +270,7 @@ class DiffusionModel(nn.Module):
         # Initial feature embeddings
         self.residue_embedding = nn.Embedding(self.num_residues, node_feature_dim)
         self.atom_type_embedding = nn.Embedding(self.num_atom_types_unique, node_feature_dim)
+        self.segment_embedding = nn.Embedding(self.num_segments, node_feature_dim)
         self.coord_encoder = nn.Linear(3, node_feature_dim)
         self.initial_embed_norm = nn.LayerNorm(node_feature_dim)
 
@@ -233,6 +299,17 @@ class DiffusionModel(nn.Module):
         self.residue_output_proj = nn.Linear(hidden_dim, node_feature_dim) 
         self.residue_final_norm = nn.LayerNorm(node_feature_dim) 
 
+        # Hierarchical segment/entity pathway. Segment tokens always form a
+        # complete graph, so distant chains remain connected independently of
+        # atom-level spatial cutoffs or k-NN membership.
+        self.segment_layers = nn.ModuleList([
+            SegmentInteractionLayer(
+                hidden_dim, hidden_dim, int(segment_distance_rbf)
+            )
+            for _ in range(self.num_segment_layers)
+        ])
+        self.segment_output_proj = nn.Linear(hidden_dim, node_feature_dim)
+
         # Output layers
         self.final_mlp = nn.Sequential(
             nn.Linear(node_feature_dim, hidden_dim),
@@ -250,13 +327,54 @@ class DiffusionModel(nn.Module):
         print(f"Topology: {self.num_residues} residues, {topology.n_atoms} atoms.")
 
         # Map each atom to its residue
-        self.register_buffer('residue_indices', torch.tensor([atom.residue.index for atom in topology.atoms], dtype=torch.long))
+        self.register_buffer(
+            'residue_indices',
+            torch.tensor(
+                [atom.residue.index for atom in topology.atoms], dtype=torch.long
+            ),
+            persistent=False,
+        )
 
         try:
              atom_type_indices = [self.atom_type_map[atom.name] for atom in topology.atoms]
         except KeyError as e:
              raise ValueError(f"Atom name '{e}' found in topology but not in the initial atom_types list used for mapping.")
-        self.register_buffer('atom_types_mapped', torch.tensor(atom_type_indices, dtype=torch.long))
+        self.register_buffer(
+            'atom_types_mapped',
+            torch.tensor(atom_type_indices, dtype=torch.long),
+            persistent=False,
+        )
+
+        chain_indices = sorted({atom.residue.chain.index for atom in topology.atoms})
+        chain_to_segment = {
+            chain_index: segment_index
+            for segment_index, chain_index in enumerate(chain_indices)
+        }
+        self.num_segments = len(chain_indices)
+        atom_segment_indices = torch.tensor(
+            [
+                chain_to_segment[atom.residue.chain.index]
+                for atom in topology.atoms
+            ],
+            dtype=torch.long,
+        )
+        residue_segment_indices = torch.empty(
+            self.num_residues, dtype=torch.long
+        )
+        for residue in topology.residues:
+            residue_segment_indices[residue.index] = chain_to_segment[
+                residue.chain.index
+            ]
+        self.register_buffer(
+            "atom_segment_indices",
+            atom_segment_indices,
+            persistent=False,
+        )
+        self.register_buffer(
+            "residue_segment_indices",
+            residue_segment_indices,
+            persistent=False,
+        )
 
         # Extract covalent bonds as base edges
         if hasattr(topology, 'bonds') and topology.bonds:
@@ -272,7 +390,7 @@ class DiffusionModel(nn.Module):
         num_bonds = topology.n_bonds if hasattr(topology, 'n_bonds') else base_edges_tensor.shape[1] // 2
         print(f"Found {num_bonds} covalent bonds.")
 
-        self.register_buffer('base_edges', base_edges_tensor)
+        self.register_buffer('base_edges', base_edges_tensor, persistent=False)
 
 
     def forward(self, x_noisy: torch.Tensor, t: torch.Tensor):
@@ -294,11 +412,17 @@ class DiffusionModel(nn.Module):
 
         residue_indices = self.residue_indices
         atom_types_mapped = self.atom_types_mapped
+        atom_segment_indices = self.atom_segment_indices
+        residue_segment_indices = self.residue_segment_indices
         base_edges = self.base_edges
 
-        # Build dynamic k-NN graph based on current positions
+        # Build dynamic k-NN graphs independently within each segment.
         x_flat = x_noisy.view(B * N, 3) # Shape [B*N, 3]
-        batch_vector = torch.arange(B, device=device).repeat_interleave(N) # Shape [B*N]
+        batch_vector = (
+            torch.arange(B, device=device).repeat_interleave(N)
+            * self.num_segments
+            + atom_segment_indices.repeat(B)
+        )
         spatial_edges = knn_graph_pytorch(x_flat, k=self.k_neighbors, batch=batch_vector, loop=False)
 
         # Combine covalent bonds with spatial neighbors
@@ -316,9 +440,12 @@ class DiffusionModel(nn.Module):
             # Build initial node features from embeddings
             res_emb = self.residue_embedding(residue_indices).unsqueeze(0).expand(B, -1, -1)
             atom_emb = self.atom_type_embedding(atom_types_mapped).unsqueeze(0).expand(B, -1, -1)
+            segment_emb = self.segment_embedding(
+                atom_segment_indices
+            ).unsqueeze(0).expand(B, -1, -1)
             coord_emb = self.coord_encoder(x_noisy) 
 
-            h = res_emb + atom_emb + coord_emb 
+            h = res_emb + atom_emb + segment_emb + coord_emb
             h = self.initial_embed_norm(h)
 
             # --- Time Embedding ---
@@ -347,13 +474,73 @@ class DiffusionModel(nn.Module):
             # Residue-level attention
             residue_h_proj = self.residue_input_proj(residue_h) 
 
+            # Local residue attention is restricted to the same segment.
+            residue_attn_mask = (
+                residue_segment_indices[:, None]
+                != residue_segment_indices[None, :]
+            )
             for i, attn_layer in enumerate(self.residue_attn_layers):
                 residue_residual = residue_h_proj
-                attn_out, _ = attn_layer(residue_h_proj, residue_h_proj, residue_h_proj) 
+                attn_out, _ = attn_layer(
+                    residue_h_proj,
+                    residue_h_proj,
+                    residue_h_proj,
+                    attn_mask=residue_attn_mask,
+                    need_weights=False,
+                )
                 residue_h_proj = self.residue_attn_norms[i](residue_residual + attn_out)
 
-            # Broadcast residue features back to atoms
-            residue_h_updated = self.residue_output_proj(residue_h_proj) 
+            # Pool residues and atom coordinates into segment tokens/centers.
+            segment_indices_expanded = residue_segment_indices.repeat(B)
+            batch_offsets_segment_res = (
+                torch.arange(B, device=device).repeat_interleave(
+                    self.num_residues
+                )
+                * self.num_segments
+            )
+            segment_indices_global_res = (
+                segment_indices_expanded + batch_offsets_segment_res
+            )
+            segment_h_flat = scatter_mean_torch(
+                residue_h_proj.view(B * self.num_residues, -1),
+                segment_indices_global_res,
+                dim=0,
+                dim_size=B * self.num_segments,
+            )
+            segment_h = segment_h_flat.view(B, self.num_segments, -1)
+
+            atom_segment_indices_expanded = atom_segment_indices.repeat(B)
+            batch_offsets_segment_atom = (
+                torch.arange(B, device=device).repeat_interleave(N)
+                * self.num_segments
+            )
+            segment_indices_global_atom = (
+                atom_segment_indices_expanded + batch_offsets_segment_atom
+            )
+            segment_centers_flat = scatter_mean_torch(
+                x_flat,
+                segment_indices_global_atom,
+                dim=0,
+                dim_size=B * self.num_segments,
+            )
+            segment_centers = segment_centers_flat.view(
+                B, self.num_segments, 3
+            )
+
+            for segment_layer in self.segment_layers:
+                segment_h = segment_layer(segment_h, segment_centers)
+
+            # Broadcast local residue and long-range segment context to atoms.
+            residue_segment_context_flat = segment_h.view(
+                B * self.num_segments, -1
+            )[segment_indices_global_res]
+            residue_segment_context = residue_segment_context_flat.view(
+                B, self.num_residues, -1
+            )
+            residue_h_updated = (
+                self.residue_output_proj(residue_h_proj)
+                + self.segment_output_proj(residue_segment_context)
+            )
             residue_h_updated_flat = residue_h_updated.view(B * self.num_residues, -1) 
             residue_context_gathered_flat = residue_h_updated_flat[residue_indices_global.long()] 
             residue_context_gathered = residue_context_gathered_flat.view(B, N, -1) 

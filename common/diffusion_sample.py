@@ -6,6 +6,7 @@ import numpy as np
 import mdtraj as md
 from typing import Optional
 from tqdm import tqdm
+from utils.coordinate_contract import load_coordinate_contract, validate_topology
 from utils.model import DiffusionModel
 from utils.diffusion import Diffusion
 from utils.logger import get_logger
@@ -42,16 +43,43 @@ def setup_model_and_diffusion(config: dict, device: torch.device):
         raise ValueError("Generative.data.topology_path is required.")
     save_dir = os.path.dirname(checkpoint_path)
 
-    # Load normalization constants
-    coord_mean = torch.load(os.path.join(save_dir, 'coord_mean.pt'), map_location=device).view(1, 1, 3)
-    coord_std = torch.load(os.path.join(save_dir, 'coord_std.pt'), map_location=device).view(1, 1, 3)
-    logger.info("Loaded normalization constants (mean/std).")
-
     # Load topology
     topology = quiet_md_load_topology(topology_path)
     num_atoms = topology.n_atoms
     atom_names = [atom.name for atom in topology.atoms]
     logger.info(f"Topology loaded: {num_atoms} atoms.")
+
+    # The contract is authoritative for topology identity and normalization.
+    contract_cfg = config.get("coordinate_contract", {})
+    contract_path = os.path.join(
+        save_dir, contract_cfg.get("filename", "coordinate_contract.pt")
+    )
+    contract = (
+        load_coordinate_contract(contract_path)
+        if os.path.isfile(contract_path)
+        else None
+    )
+    if contract is not None:
+        validate_topology(
+            topology, contract["topology"], context="diffusion inference topology"
+        )
+        coord_mean = torch.as_tensor(
+            contract["coord_mean"], device=device, dtype=torch.float32
+        ).view(1, 1, 3)
+        coord_std = torch.as_tensor(
+            contract["coord_std"], device=device, dtype=torch.float32
+        ).view(1, 1, 3)
+        logger.info("Loaded normalization from the coordinate contract.")
+    else:
+        coord_mean = torch.load(
+            os.path.join(save_dir, 'coord_mean.pt'), map_location=device
+        ).view(1, 1, 3)
+        coord_std = torch.load(
+            os.path.join(save_dir, 'coord_std.pt'), map_location=device
+        ).view(1, 1, 3)
+        logger.warning(
+            "Checkpoint has no coordinate contract; using legacy normalization."
+        )
 
     # Initialize model
     model_cfg = config['model']
@@ -65,10 +93,35 @@ def setup_model_and_diffusion(config: dict, device: torch.device):
         num_schnet_layers=model_cfg['num_schnet_layers'],
         num_gat_layers=model_cfg['num_gat_layers'],
         residue_attn_heads=model_cfg['residue_attn_heads'],
-        k_neighbors=model_cfg['k_neighbors']
+        k_neighbors=model_cfg['k_neighbors'],
+        num_segment_layers=model_cfg.get('num_segment_layers', 2),
+        segment_distance_rbf=model_cfg.get('segment_distance_rbf', 16),
     ).to(device)
 
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    loaded = torch.load(checkpoint_path, map_location=device)
+    state_dict = loaded.get("model_state_dict", loaded) if isinstance(loaded, dict) else loaded
+    topology_buffers = {
+        "residue_indices",
+        "atom_types_mapped",
+        "base_edges",
+        "atom_segment_indices",
+        "residue_segment_indices",
+    }
+    state_dict = {
+        key: value for key, value in state_dict.items() if key not in topology_buffers
+    }
+    incompatible = model.load_state_dict(state_dict, strict=False)
+    if incompatible.missing_keys:
+        raise ValueError(
+            "Checkpoint is missing trained model parameters: "
+            + ", ".join(incompatible.missing_keys)
+            + ". Warm-start training with the new architecture before sampling."
+        )
+    if incompatible.unexpected_keys:
+        raise ValueError(
+            "Checkpoint has unexpected model parameters: "
+            + ", ".join(incompatible.unexpected_keys)
+        )
     model.eval()
     logger.info(f"Loaded model weights from checkpoint: {checkpoint_path}")
 

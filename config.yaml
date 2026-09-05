@@ -25,6 +25,12 @@ Generative:
     dcd_path: "./output_riteweight/diffusion_training.dcd"
     topology_path: "./output_riteweight/diffusion_training.pdb"
     alignment_atomselect: "all"            # RMSD fit selection; transform is applied to every atom
+  coordinate_contract:
+    enabled: true                         # Reuse canonical frame/topology/scaling during warm starts
+    source: null                          # Resolved automatically from the preceding iteration
+    filename: "coordinate_contract.pt"
+    reference_filename: "canonical_reference.pdb"
+    alignment_atomselect: null            # null inherits data.alignment_atomselect
 
   model:
     node_feature_dim: 64                   # Dimension for node embeddings (residue, atom type, coords)
@@ -34,6 +40,8 @@ Generative:
     num_gat_layers: 2                      # Number of Attention layers for residue-level processing
     residue_attn_heads: 4                  # Number of attention heads for residue-level attention (MUST MATCH MODEL)
     k_neighbors: 16                        # Number of neighbors for k-NN graph (spatial edges)
+    num_segment_layers: 2                  # Complete-graph interaction layers between chains/entities
+    segment_distance_rbf: 16               # Radial distance features for segment interactions
 
   diffusion:
     timesteps: 200                         # Number of diffusion steps
@@ -227,6 +235,7 @@ RiteWeight:
       topology: "diffusion_training.pdb"    # Matching selected topology for the DCD
       atomselect: "protein and not element H"
       alignment_atomselect: null             # null uses the RiteWeight structural feature selection
+      reference_path: null                   # Resolved to the model's canonical reference by the workflow
       chunk_size: 1000
 
 ############ Weighted FEL projections from RiteWeight ############

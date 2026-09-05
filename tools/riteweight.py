@@ -18,6 +18,7 @@ from common.feature_contract import FEATURE_SCHEMA
 from common.config import normalize_config_aliases
 from tools.frame_weights import segment_weights_to_frame_weights
 from tools.tensor_table import save_tensor_table
+from utils.coordinate_contract import atom_identity
 from utils.mdtraj_io import iterload as quiet_md_iterload
 from utils.mdtraj_io import load as quiet_md_load
 from utils.mdtraj_io import load_frame as quiet_md_load_frame
@@ -800,6 +801,7 @@ def write_diffusion_training_data(
     dcd_path: str,
     topology_path: str,
     chunk_size: int,
+    reference_path: Optional[str] = None,
 ):
     """RMSD-align RiteWeight frames, then write a selected DCD and topology."""
     topology = quiet_md_load_topology(top_path)
@@ -817,7 +819,63 @@ def write_diffusion_training_data(
             f"{alignment_atomselect!r} matched {len(alignment_indices)}."
         )
 
-    reference = quiet_md_load_frame(used_pairs[0][0], 0, top=top_path)
+    if reference_path:
+        if not os.path.isfile(reference_path):
+            raise FileNotFoundError(
+                f"Canonical diffusion reference not found: {reference_path}"
+            )
+        reference = quiet_md_load(reference_path)
+        selected_topology = topology.subset(atom_indices)
+        selected_identities = [
+            atom_identity(atom) for atom in selected_topology.atoms
+        ]
+        reference_identities = [
+            atom_identity(atom) for atom in reference.topology.atoms
+        ]
+        if selected_identities != reference_identities:
+            mismatch = next(
+                (
+                    index
+                    for index, (current, canonical) in enumerate(
+                        zip(selected_identities, reference_identities)
+                    )
+                    if current != canonical
+                ),
+                min(len(selected_identities), len(reference_identities)),
+            )
+            raise ValueError(
+                "Diffusion output atom selection does not match the canonical "
+                f"reference at selected atom {mismatch}."
+            )
+        reference_lookup = {
+            tuple(identity): index
+            for index, identity in enumerate(reference_identities)
+        }
+        selected_identity_by_source_index = {
+            int(source_index): tuple(atom_identity(selected_atom))
+            for source_index, selected_atom in zip(
+                atom_indices, selected_topology.atoms
+            )
+        }
+        source_alignment_indices = []
+        reference_alignment_indices = []
+        for index in alignment_indices:
+            identity = selected_identity_by_source_index.get(int(index))
+            if identity in reference_lookup:
+                source_alignment_indices.append(int(index))
+                reference_alignment_indices.append(reference_lookup[identity])
+        if len(source_alignment_indices) < 3:
+            raise ValueError(
+                "Fewer than three alignment atoms are shared by the trajectory "
+                "topology and canonical diffusion reference."
+            )
+        alignment_indices = np.asarray(source_alignment_indices, dtype=int)
+        reference_alignment_indices = np.asarray(
+            reference_alignment_indices, dtype=int
+        )
+    else:
+        reference = quiet_md_load_frame(used_pairs[0][0], 0, top=top_path)
+        reference_alignment_indices = alignment_indices
     if reference.n_frames != 1:
         raise RuntimeError("Could not load the diffusion RMSD reference frame.")
 
@@ -839,7 +897,11 @@ def write_diffusion_training_data(
             ):
                 # Calculate the rigid fit from the alignment selection, then
                 # apply that transform to every atom before selecting output.
-                chunk.superpose(reference, atom_indices=alignment_indices)
+                chunk.superpose(
+                    reference,
+                    atom_indices=alignment_indices,
+                    ref_atom_indices=reference_alignment_indices,
+                )
                 selected = chunk.atom_slice(atom_indices)
                 if not wrote_topology and selected.n_frames:
                     # PDB stores residue names in three columns. Normalize
@@ -1142,6 +1204,7 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
                 or diffusion_cfg.get("atomselect")
                 or "all"
             ),
+            reference_path=diffusion_cfg.get("reference_path"),
             dcd_path=diffusion_dcd_path,
             topology_path=diffusion_topology_path,
             chunk_size=int(diffusion_cfg.get("chunk_size", 1000)),

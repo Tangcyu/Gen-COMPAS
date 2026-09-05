@@ -62,6 +62,7 @@ FILE_FIELDS = {
     "Generative.data.dcd_path",
     "Generative.data.topology_path",
     "Generative.init_checkpoint_path",
+    "Generative.coordinate_contract.source",
     "Generative.inference.checkpoint",
     "VCN.topfile",
     "VCN.gendcdfile",
@@ -72,6 +73,7 @@ FILE_FIELDS = {
     "Occupancy.pdb_file",
     "NAMD.namd_path",
     "RiteWeight.io.topology",
+    "RiteWeight.outputs.diffusion.reference_path",
     "FEL_estimate.input",
 }
 

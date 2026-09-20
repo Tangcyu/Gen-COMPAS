@@ -9,8 +9,8 @@
 </p>
 
 <p>
-This repository provides a modular pipeline for protein structure generation, committor analysis, clustering, and trajectory reweighting.
-It combines <strong>diffusion models</strong> for structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, along with postprocessing tools for clustering, occupancy analysis, and trajectory reweighting.
+This repository provides the modular pipeline for <strong>Gen-COMPAS</strong>, the generative committor-guided path-sampling framework introduced in <a href="https://www.nature.com/articles/s41586-026-11025-1">Breaking timescales with generative sampling of conformational transitions</a> (<em>Nature</em>, 2026).
+It combines <strong>diffusion models</strong> for protein structure generation with <strong>Variational Committor Networks (VCN)</strong> for reaction coordinate learning, alongside postprocessing tools for clustering, occupancy analysis, and trajectory reweighting.
 </p>
 
 <p>

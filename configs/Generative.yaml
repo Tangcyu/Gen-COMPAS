@@ -1,0 +1,6 @@
+# Top-level defaults for Generative; override under Generative in your run YAML.
+# Nested defaults: Generative.data.yaml, Generative.coordinate_contract.yaml, Generative.model.yaml, Generative.diffusion.yaml, Generative.training.yaml, Generative.inference.yaml, Generative.autonoise.yaml
+save_dir: null
+device: cuda:0
+random_seed: 42
+init_checkpoint_path: null

@@ -26,7 +26,11 @@ a = Analysis(
     [str(project_root / "helper" / "config_helper.py")],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[(str(project_root / "figures" / "scheme.png"), "figures"), *font_datas],
+    datas=[
+        (str(project_root / "figures" / "scheme.png"), "figures"),
+        (str(project_root / "configs" / "*.yaml"), "configs"),
+        *font_datas,
+    ],
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],

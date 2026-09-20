@@ -1,0 +1,3 @@
+# Defaults for Generative.diffusion; override under Generative.diffusion in your run YAML.
+timesteps: 200
+beta_schedule: cosine

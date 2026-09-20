@@ -1,0 +1,3 @@
+# Defaults for Workflow.initial_diffusion_data; override under Workflow.initial_diffusion_data in your run YAML.
+dcd_path: null
+topology_path: null

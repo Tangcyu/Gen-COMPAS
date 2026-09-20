@@ -1,0 +1,14 @@
+# Defaults for RiteWeight.features; override under RiteWeight.features in your run YAML.
+mode: internal_zmat
+internal_zmat:
+  atomselect: protein and name CA
+  atom_order: null
+  max_atoms: null
+  order: index
+distances:
+  atom_pairs: []
+cache:
+  enabled: true
+  format: npz
+  path: ./output_riteweight/features_internal_zmat.npz
+  policy: write_if_missing

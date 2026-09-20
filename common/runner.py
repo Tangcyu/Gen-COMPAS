@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 STEP_NAMES = (
     "train_diffusion",
+    "autonoise_diffusion",
     "sample_diffusion",
     "train_committor",
     "committor_slice",
@@ -24,7 +25,20 @@ def run_step(step: str, config: Mapping[str, Any]):
     if step == "train_diffusion":
         from common.diffusion_train import train_diffusion_model
         return train_diffusion_model(config["Generative"])
+    if step == "autonoise_diffusion":
+        if not config["Generative"].get("autonoise", {}).get("enabled", False):
+            raise ValueError("autonoise_diffusion requires Generative.autonoise.enabled: true.")
+        from common.autonoise_state import accept_autonoise_result, calibration_fingerprint
+        from common.diffusion_autonoise import run_autonoise
+        fingerprint = calibration_fingerprint(config)
+        report = run_autonoise(config)
+        selection = accept_autonoise_result(config, report, fingerprint)
+        print(f"AutoNoise selected noise_scale={selection['noise_scale']}; outputs: {selection['output_dir']}")
+        return report
     if step == "sample_diffusion":
+        if config["Generative"].get("autonoise", {}).get("enabled", False):
+            from common.autonoise_state import apply_autonoise_selection
+            apply_autonoise_selection(config)
         from common.diffusion_sample import run_diffusion_inference
         return run_diffusion_inference(config["Generative"])
     if step == "train_committor":
@@ -60,9 +74,13 @@ def main(argv=None):
     parser.add_argument("--config", required=True, help="Resolved YAML configuration")
     args = parser.parse_args(argv)
 
-    from common.config import load_config
+    from common.config import load_config, write_effective_config
 
-    return run_step(args.step, load_config(args.config))
+    config = load_config(args.config)
+    result = run_step(args.step, config)
+    if args.step == "autonoise_diffusion":
+        write_effective_config(config, args.config)
+    return result
 
 
 if __name__ == "__main__":

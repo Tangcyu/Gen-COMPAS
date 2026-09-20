@@ -1,0 +1,6 @@
+# Top-level defaults for RiteWeight; override under RiteWeight in your run YAML.
+# Nested defaults: RiteWeight.io.yaml, RiteWeight.pairing.yaml, RiteWeight.features.yaml, RiteWeight.riteweight.yaml, RiteWeight.colvars.yaml, RiteWeight.committor_labels.yaml, RiteWeight.outputs.yaml, RiteWeight.pmf_output.yaml
+folders: []
+dcd_pattern: '*Unbiased.[AB].dcd'
+colvars_pattern: '*Unbiased.[AB].colvars.traj'
+tag_regex: \.([AB])(?:\.|$)

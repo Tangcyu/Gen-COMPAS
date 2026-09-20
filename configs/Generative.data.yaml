@@ -1,0 +1,4 @@
+# Defaults for Generative.data; override under Generative.data in your run YAML.
+dcd_path: null
+topology_path: null
+alignment_atomselect: all

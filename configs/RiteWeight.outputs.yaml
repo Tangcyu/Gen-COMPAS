@@ -1,0 +1,15 @@
+# Defaults for RiteWeight.outputs; override under RiteWeight.outputs in your run YAML.
+frame_csv: frame_weights.csv
+segment_csv: segment_weights.csv
+convergence_plot: convergence_delta.png
+vcn:
+  enabled: true
+  filename: vcn_training.pt
+diffusion:
+  enabled: true
+  trajectory: diffusion_training.dcd
+  topology: diffusion_training.pdb
+  atomselect: protein and not element H
+  alignment_atomselect: null
+  reference_path: null
+  chunk_size: 1000

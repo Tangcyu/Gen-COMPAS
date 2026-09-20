@@ -1,0 +1,16 @@
+# Top-level defaults for NAMD; override under NAMD in your run YAML.
+# Nested defaults: NAMD.targets.yaml, NAMD.phases.yaml, NAMD.execution.yaml
+namd_path: null
+template_path: null
+output_dir: ./output_namd
+tmd_force_constant: 10000.0
+existing_job_policy: error
+protocols:
+- name: A
+  tmd_template: TMD.A.conf
+  unbiased_template: Unbiased.A.conf
+  initial_unbiased_template: Initial.A.conf
+- name: B
+  tmd_template: TMD.B.conf
+  unbiased_template: Unbiased.B.conf
+  initial_unbiased_template: Initial.B.conf

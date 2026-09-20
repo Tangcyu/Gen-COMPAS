@@ -1,0 +1,10 @@
+# Defaults for Generative.model; override under Generative.model in your run YAML.
+node_feature_dim: 64
+time_embedding_dim: 128
+hidden_dim: 128
+num_schnet_layers: 4
+num_gat_layers: 2
+residue_attn_heads: 4
+k_neighbors: 16
+num_segment_layers: 2
+segment_distance_rbf: 16

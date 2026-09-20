@@ -1,0 +1,6 @@
+# Defaults for Generative.coordinate_contract; override under Generative.coordinate_contract in your run YAML.
+enabled: true
+source: null
+filename: coordinate_contract.pt
+reference_filename: canonical_reference.pdb
+alignment_atomselect: null

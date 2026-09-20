@@ -1,0 +1,8 @@
+# Defaults for RiteWeight.pmf_output; override under RiteWeight.pmf_output in your run YAML.
+# Legacy optional PMF output; FEL_estimate is the normal workflow stage.
+enabled: false
+filename: pmf.dat
+F_max: null
+sigma_bins: null
+scaled_bins: null
+scaled_filename: pmf_scaled.dat

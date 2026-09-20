@@ -4,237 +4,17 @@ from __future__ import annotations
 
 from copy import deepcopy
 import math
+import warnings
 from pathlib import Path
 from typing import Any, Mapping, Union
 
 import yaml
 
+from configs import load_workflow_defaults
 
-DEFAULT_CONFIG = {
-    "Workflow": {
-        "root_dir": "./Iterations",
-        "initial_data_folders": [],
-        "initial_diffusion_data": {"dcd_path": None, "topology_path": None},
-        "run_initial_unbiased": False,
-        "run_fel": True,
-        "warm_start_diffusion": True,
-        "iteration_noise_scales": {},
-        "iteration_diffusion_epochs": {},
-        "isolate_steps": True,
-    },
-    "Generative": {
-        "save_dir": None,
-        "device": "cuda:0",
-        "random_seed": 42,
-        "init_checkpoint_path": None,
-        "data": {
-            "dcd_path": None,
-            "topology_path": None,
-            "alignment_atomselect": "all",
-        },
-        "coordinate_contract": {
-            "enabled": True,
-            "source": None,
-            "filename": "coordinate_contract.pt",
-            "reference_filename": "canonical_reference.pdb",
-            "alignment_atomselect": None,
-        },
-        "model": {
-            "node_feature_dim": 64,
-            "time_embedding_dim": 128,
-            "hidden_dim": 128,
-            "num_schnet_layers": 4,
-            "num_gat_layers": 2,
-            "residue_attn_heads": 4,
-            "k_neighbors": 16,
-            "num_segment_layers": 2,
-            "segment_distance_rbf": 16,
-        },
-        "diffusion": {"timesteps": 200, "beta_schedule": "cosine"},
-        "training": {
-            "epochs": 50,
-            "batch_size": 64,
-            "lr": 1.0e-4,
-            "weight_decay": 1.0e-6,
-            "grad_clip": 1.0,
-            "num_workers": 4,
-            "save_interval": 50,
-        },
-        "inference": {
-            "checkpoint": None,
-            "output": None,
-            "num_samples": 1000,
-            "sample_batch": 100,
-            "noise_scale": 1.5,
-        },
-    },
-    "VCN": {
-        "device": "cuda:0",
-        "label": "committor",
-        "sampling_path": ".",
-        "z_matrix": True,
-        "use_all": False,
-        "pair_distance": False,
-        "dcdfile": None,
-        "traj_fns": None,
-        "topfile": None,
-        "atomindex": [],
-        "atomselect": "protein and name CA",
-        "stride": 1,
-        "cvs": [],
-        "periodic": False,
-        "val_ratio": 0.1,
-        "random_seed": 42,
-        "time_shift": 1,
-        "trajectory_column": "trajectory_id",
-        "epochs": 5000,
-        "learning_rate": 1.0e-4,
-        "patience": 200,
-        "batch_size_factor": 0.6,
-        "num_layers": 4,
-        "num_nodes": 64,
-        "k": 1.0,
-        "out_dir": None,
-        "cvs_to_plot": None,
-        "plot_committor_projections": False,
-        "gendcdfile": None,
-        "model_fn": None,
-        "slice_dir": None,
-        "q_variance": 0.1,
-        "n_targets": 20,
-        "require_n_targets": True,
-    },
-    "Clustering": {
-        "topology": None,
-        "trajectory": None,
-        "atom_selection": "protein and name CA",
-        "output_dir": "./output_clusters",
-        "n_clusters": None,
-        "n_per_cluster": 2,
-        "max_k": 8,
-        "select_farthest": True,
-        "random_seed": 0,
-    },
-    "Occupancy": {
-        "pdb_dir": None,
-        "topology_file": None,
-        "pdb_file": None,
-        "output_dir": "./output_pdbs",
-        "add_hydrogens": True,
-        "selection": "protein and name CA",
-    },
-    "NAMD": {
-        "namd_path": None,
-        "template_path": None,
-        "output_dir": "./output_namd",
-        "tmd_force_constant": 10000.0,
-        "existing_job_policy": "error",
-        "targets": {
-            "path": "./output_pdbs",
-            "pattern": "*.pdb",
-            "recursive": False,
-            "target_filename": "output.pdb",
-        },
-        "protocols": [
-            {
-                "name": "A",
-                "tmd_template": "TMD.A.conf",
-                "unbiased_template": "Unbiased.A.conf",
-                "initial_unbiased_template": "Initial.A.conf",
-            },
-            {
-                "name": "B",
-                "tmd_template": "TMD.B.conf",
-                "unbiased_template": "Unbiased.B.conf",
-                "initial_unbiased_template": "Initial.B.conf",
-            },
-        ],
-        "phases": {"tmd": True, "unbiased": True},
-        "execution": {
-            "device": "cpu",
-            "parallel_jobs": 1,
-            "dry_run": False,
-            "cpu": {
-                "threads_per_job": 1,
-                "command": ["{namd}", "+p{threads}", "{config}"],
-            },
-            "gpu": {
-                "devices": ["0"],
-                "threads_per_job": 1,
-                "command": [
-                    "{namd}", "+p{threads}", "+devices", "{device}", "{config}"
-                ],
-            },
-        },
-    },
-    "RiteWeight": {
-        "folders": [],
-        "dcd_pattern": "*Unbiased.[AB].dcd",
-        "colvars_pattern": "*Unbiased.[AB].colvars.traj",
-        "tag_regex": r"\.([AB])(?:\.|$)",
-        "io": {"topology": None, "out": "./output_riteweight", "stride": 1},
-        "pairing": {"allow_skip_first_colvars": True, "strict": True},
-        "features": {
-            "mode": "internal_zmat",
-            "internal_zmat": {
-                "atomselect": "protein and name CA",
-                "atom_order": None,
-                "max_atoms": None,
-                "order": "index",
-            },
-            "distances": {"atom_pairs": []},
-            "cache": {
-                "enabled": True,
-                "format": "npz",
-                "path": "./output_riteweight/features_internal_zmat.npz",
-                "policy": "write_if_missing",
-            },
-        },
-        "riteweight": {
-            "n_clusters": 100,
-            "n_iter": 200,
-            "tol": 1.0e-6,
-            "tol_window": 5,
-            "avg_last": 20,
-            "seed": 2026,
-            "lag": 50,
-        },
-        "colvars": {"cv": ["CV1", "CV2"], "save_cols": "all", "periodic_cols": []},
-        "committor_labels": {
-            "enabled": True,
-            "cvs_to_label": ["CV1", "CV2"],
-            "basin_A": None,
-            "basin_B": None,
-            "basin_size": None,
-            "k_prefactor": 1.0,
-            "angle_unit": "degree",
-        },
-        "outputs": {
-            "frame_csv": "frame_weights.csv",
-            "segment_csv": "segment_weights.csv",
-            "convergence_plot": "convergence_delta.png",
-            "vcn": {"enabled": True, "filename": "vcn_training.pt"},
-            "diffusion": {
-                "enabled": True,
-                "trajectory": "diffusion_training.dcd",
-                "topology": "diffusion_training.pdb",
-                "atomselect": "protein and not element H",
-                "alignment_atomselect": None,
-                "reference_path": None,
-                "chunk_size": 1000,
-            },
-        },
-    },
-    "FEL_estimate": {
-        "input": None,
-        "output_dir": "./output_riteweight/fel",
-        "weight_column": "fel_weight",
-        "temperature_K": 300.0,
-        "probability_floor": 1.0e-300,
-        "landscape_F_max": 10.0,
-        "projections": [],
-    },
-}
+
+# Canonical values live in the packaged configs/*.yaml files.
+DEFAULT_CONFIG = load_workflow_defaults()
 
 
 Q_CENTER = 0.5
@@ -428,9 +208,20 @@ def resolve_iteration_config(config: Mapping[str, Any], iteration: int) -> dict:
     generative["save_dir"] = str(paths["diffusion_model"])
     generative["inference"]["checkpoint"] = str(paths["diffusion_model"] / "best_model.pt")
     generative["inference"]["output"] = str(paths["generated"])
-    generative["inference"]["noise_scale"] = _iteration_noise_scale(
-        workflow, iteration, generative["inference"].get("noise_scale", 1.5)
-    )
+    autonoise = generative.setdefault("autonoise", {"enabled": False})
+    if not isinstance(autonoise, Mapping) or not isinstance(autonoise.get("enabled", False), bool):
+        raise ValueError("Generative.autonoise.enabled must be a boolean.")
+    if autonoise.get("enabled", False):
+        if workflow.get("iteration_noise_scales"):
+            warnings.warn("Generative.autonoise.enabled is true: Workflow.iteration_noise_scales "
+                          "is ignored; AutoNoise selects the sampling noise for each iteration.",
+                          UserWarning, stacklevel=2)
+        generative["inference"]["noise_scale"] = None  # Resolved by autonoise_diffusion.
+        autonoise["output_dir"] = str(iteration_dir / "autonoise")
+    else:
+        generative["inference"]["noise_scale"] = _iteration_noise_scale(
+            workflow, iteration, generative["inference"].get("noise_scale", 1.5)
+        )
     generative["training"]["epochs"] = _iteration_diffusion_epochs(
         workflow, iteration, generative["training"].get("epochs", 50)
     )
@@ -539,5 +330,7 @@ def write_effective_config(config: Mapping[str, Any], path: Union[str, Path]) ->
     """Write a resolved configuration without Python-only path objects."""
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as handle:
+    temporary = output.with_name(f".{output.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(dict(config), handle, sort_keys=False)
+    temporary.replace(output)

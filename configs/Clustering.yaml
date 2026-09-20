@@ -1,0 +1,10 @@
+# Top-level defaults for Clustering; override under Clustering in your run YAML.
+topology: null
+trajectory: null
+atom_selection: protein and name CA
+output_dir: ./output_clusters
+n_clusters: null
+n_per_cluster: 2
+max_k: 8
+select_farthest: true
+random_seed: 0

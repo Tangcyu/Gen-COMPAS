@@ -44,8 +44,9 @@ py-modules = ["workflow"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["common", "common.*", "figures", "helper", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
+include = ["common", "common.*", "configs", "figures", "helper", "tools", "tools.*", "utils", "utils.*", "vcn", "vcn.*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
+"configs" = ["*.yaml", "README.md"]
 "figures" = ["scheme.png"]

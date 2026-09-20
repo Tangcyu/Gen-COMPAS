@@ -1,0 +1,10 @@
+# Defaults for RiteWeight.committor_labels; override under RiteWeight.committor_labels in your run YAML.
+enabled: true
+cvs_to_label:
+- CV1
+- CV2
+basin_A: null
+basin_B: null
+basin_size: null
+k_prefactor: 1.0
+angle_unit: degree

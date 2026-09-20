@@ -1,0 +1,5 @@
+# Defaults for NAMD.targets; override under NAMD.targets in your run YAML.
+path: ./output_pdbs
+pattern: '*.pdb'
+recursive: false
+target_filename: output.pdb

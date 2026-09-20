@@ -1,7 +1,10 @@
 # YAML configuration for Gen-COMPAS: Diffusion Model and VCN Committor Model
 # Adjust paths and parameters as needed for your system and data
+# Canonical defaults (including omitted advanced settings): configs/*.yaml.
+# Explicit values below override defaults; see configs/README.md for the file map.
 
 ############ Iterative workflow configuration ############
+# Defaults: configs/Workflow.yaml and configs/Workflow.*.yaml (where present).
 Workflow:
   root_dir: "./Iterations"                  # Creates 0th.Iteration, 1st.Iteration, ...
   initial_data_folders: []                  # Optional initial folders included in cumulative RiteWeight
@@ -11,11 +14,12 @@ Workflow:
   run_initial_unbiased: false               # Initial DCD above already exists
   run_fel: true
   warm_start_diffusion: true                # Initialize iteration N from iteration N-1 best_model.pt
-  iteration_noise_scales: {}                # Optional, e.g. {0: 10.0, 1: 5.0, 2: 1.5}
+  iteration_noise_scales: {}                # Manual overrides; warned and ignored when autonoise is enabled
   iteration_diffusion_epochs: {}            # Optional, e.g. {0: 50, 1: 10, 2: 10}
   isolate_steps: true                       # Separate runtimes also release GPU memory
 
 ############ Generative model configuration ############
+# Defaults: configs/Generative.yaml and configs/Generative.*.yaml (where present).
 Generative:
   # General settings
   save_dir: 'PATH/TO/YOUR/MODEL/SAVING'    # Directory to save model checkpoints and logs
@@ -56,14 +60,30 @@ Generative:
     num_workers: 16                        # Number of workers for DataLoader (adjust based on CPU/memory)
     save_interval: 50                      # Save model checkpoint every N epochs
 
+  # Runs immediately before sample_diffusion when enabled.
+  # Advanced defaults: configs/Generative.autonoise.yaml; output paths are workflow-managed.
+  autonoise:
+    enabled: false
+    reference:
+      state_a: /PATH/TO/STATE_A.dcd
+      state_b: /PATH/TO/STATE_B.dcd
+    search:
+      bounds: [0.5, 5.0]
+      refine_rounds: 3
+      max_samples: 512
+    save_dcd: true
+
   inference:
     checkpoint: "PATH/TO/YOUR/checkpoint"  # Path to trained model checkpoint
     output:     "PATH/TO/OUTPUT/candidates.dcd" # Generated trajectory
     num_samples: 1000                      # Number of samples to generate
     sample_batch: 100                      # Batch size for sampling (adjust based on GPU memory)
-    noise_scale: 1.5                       # Scale of initial noise
+    noise_scale: 1.5                       # Reverse-step noise multiplier
+
+
 
 ############ VCN Committor model configuration ############
+# Defaults: configs/VCN.yaml and configs/VCN.*.yaml (where present).
 VCN:
   # General settings
   device         : 'cuda:0'                # CUDA device to use (e.g., 'cuda:0' or 'cpu')
@@ -107,6 +127,7 @@ VCN:
   n_targets      :  20                      # First N frames from the configured q slice (no clustering)
   require_n_targets: true                   # Fail rather than emit fewer targets
 
+# Defaults: configs/Clustering.yaml and configs/Clustering.*.yaml (where present).
 Clustering:
   topology       : "PATH/TO/PSF.psf"
   trajectory     : "PATH/TO/DCD.dcd"
@@ -117,6 +138,7 @@ Clustering:
   max_k          : 8                        # used only if n_clusters is null
   select_farthest: true                     # also include farthest frames along with cluster centers
 
+# Defaults: configs/Occupancy.yaml and configs/Occupancy.*.yaml (where present).
 Occupancy:
   pdb_dir        : "./input_pdbs"           # Generated target PDBs without hydrogen atoms
   topology_file  : "system_withH.psf"       # Reference topology WITH hydrogen atoms
@@ -126,6 +148,7 @@ Occupancy:
   selection      : "protein and name CA"    # MDTraj/MDAnalysis-style selection for setting occupancy=1, else 0 (for targeted MD)
 
 ############ Parallel TMD and unbiased NAMD simulations ############
+# Defaults: configs/NAMD.yaml and configs/NAMD.*.yaml (where present).
 NAMD:
   namd_path         : "/PATH/TO/namd3"      # NAMD executable or command available on PATH
   template_path     : "/PATH/TO/NAMD_inputs" # Directory copied into every isolated job
@@ -168,6 +191,7 @@ NAMD:
       command: ["{namd}", "+p{threads}", "+devices", "{device}", "{config}"]
 
 ############ RiteWeight configuration ############
+# Defaults: configs/RiteWeight.yaml and configs/RiteWeight.*.yaml (where present).
 RiteWeight:
   folders:
     - "PATH/TO/TRAJECTORY/FOLDER"
@@ -239,6 +263,7 @@ RiteWeight:
       chunk_size: 1000
 
 ############ Weighted FEL projections from RiteWeight ############
+# Defaults: configs/FEL_estimate.yaml and configs/FEL_estimate.*.yaml (where present).
 FEL_estimate:
   input: "./output_riteweight/vcn_training.pt"  # RiteWeight .pt or frame_weights.csv
   output_dir: "./output_riteweight/fel"

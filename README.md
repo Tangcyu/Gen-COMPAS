@@ -44,6 +44,11 @@ For computing statistical weights and estimating free energy landscapes, please 
 <td>Train a diffusion model for protein structure generation.</td>
 </tr>
 <tr>
+<td><code>autonoise_diffusion</code></td>
+<td><code>run_autonoise()</code></td>
+<td>Calibrate reverse-diffusion noise from A/intermediate/B pilot distributions before sampling; enabled by <code>Generative.autonoise.enabled</code>.</td>
+</tr>
+<tr>
 <td><code>sample_diffusion</code></td>
 <td><code>run_diffusion_inference()</code></td>
 <td>Generate new protein conformations using a trained diffusion model.</td>
@@ -110,11 +115,13 @@ gen-compas --config /path/to/workflow.yaml --iteration 0 1 2
 <h3>Iteration Schedules and Data Flow</h3>
 
 <pre><code>Iteration 0:
-  train_diffusion -&gt; sample_diffusion -&gt; clustering -&gt; occupancy
+  train_diffusion -&gt; [autonoise_diffusion] -&gt; sample_diffusion
+  -&gt; clustering -&gt; occupancy
   -&gt; namd -&gt; riteweight -&gt; fel_estimate
 
 Iterations 1+:
-  train_diffusion -&gt; train_committor -&gt; sample_diffusion
+  train_diffusion -&gt; train_committor -&gt; [autonoise_diffusion]
+  -&gt; sample_diffusion
   -&gt; committor_slice -&gt; occupancy -&gt; namd -&gt; riteweight
   -&gt; fel_estimate
 </code></pre>
@@ -125,6 +132,7 @@ Iterations 1+:
 
 <ul>
 <li><code>Workflow.run_initial_unbiased: true</code> prepends <code>initial_unbiased</code> to iteration 0. The <code>initial_unbiased_template</code> files start directly from the configured A/B basin states; these trajectories are added to cumulative RiteWeight input but do not replace <code>initial_diffusion_data</code>.</li>
+<li><code>Generative.autonoise.enabled: true</code> includes <code>autonoise_diffusion</code> immediately before <code>sample_diffusion</code> in every iteration. With the default <code>false</code>, the stage is omitted and manual noise selection is unchanged.</li>
 <li><code>Workflow.run_fel: false</code> removes <code>fel_estimate</code> from each schedule.</li>
 <li><code>Workflow.warm_start_diffusion: true</code> initializes iteration N diffusion weights from iteration N-1 <code>best_model.pt</code>. It also inherits the canonical coordinate reference, ordered topology signature, alignment selection, and normalization constants stored in <code>coordinate_contract.pt</code>. Incompatible atom ordering or bonds stop training before weights are reused. Optimizer, scheduler, and epoch state are not restored.</li>
 <li><code>Workflow.isolate_steps: true</code> runs regular stages in clean Python child processes, releasing GPU/native-library state between stages.</li>
@@ -157,7 +165,7 @@ gen-compas --config workflow.yaml --iteration 1 --rerun_step sample_diffusion
 
 <p>Run <code>gen-compas --help</code> to print every accepted step name and the iteration-specific schedules.</p>
 
-<p>Sampling noise and diffusion-training epochs can be changed by iteration with sparse overrides. Omitted iterations retain <code>Generative.inference.noise_scale</code> and <code>Generative.training.epochs</code>, respectively:</p>
+<p>When AutoNoise is disabled, sampling noise can be changed by iteration with sparse overrides. Diffusion-training epochs can also be overridden independently. Omitted iterations retain <code>Generative.inference.noise_scale</code> and <code>Generative.training.epochs</code>, respectively:</p>
 
 <pre><code>Workflow:
   root_dir: ./Iterations
@@ -180,11 +188,55 @@ VCN:
   plot_committor_projections: false
 </code></pre>
 
-<p><code>minimal.yaml</code> contains only system-specific or non-default values. Defaults live in <code>common/config.py</code>. The initial unbiased DCD and its matching topology are used only for iteration-0 diffusion training; no RiteWeight or Colvars trajectory is required before that training. The normal <code>Unbiased.A.conf</code>/<code>Unbiased.B.conf</code> templates provide the post-TMD trajectories consumed by the first RiteWeight step.</p>
+<p><a href="configs/Full.yaml"><code>configs/Full.yaml</code></a> expands <code>config.yaml</code> with all packaged defaults, including advanced AutoNoise settings. Use it to inspect or edit the complete configuration; replace example paths and system-specific basin/projection definitions before running.</p>
 
-<p><code>Workflow.iteration_noise_scales</code> overrides <code>Generative.inference.noise_scale</code> only for the listed iterations. Likewise, <code>Workflow.iteration_diffusion_epochs</code> overrides <code>Generative.training.epochs</code>; omitted iterations use the Generative fallback values. Set <code>VCN.plot_committor_projections: true</code> only when committor maps on <code>cvs_to_plot</code> should be written during <code>committor_slice</code>.</p>
+<p><code>minimal.yaml</code> contains only system-specific or non-default values. Defaults are loaded from the packaged <a href="configs/README.md"><code>configs/</code></a> directory: top-level fields live in <code>Section.yaml</code> and nested sections in <code>Section.subsection.yaml</code>, including <code>Generative.autonoise.yaml</code>. Explicit run settings override these defaults recursively. The initial unbiased DCD and its matching topology are used only for iteration-0 diffusion training; no RiteWeight or Colvars trajectory is required before that training. The normal <code>Unbiased.A.conf</code>/<code>Unbiased.B.conf</code> templates provide the post-TMD trajectories consumed by the first RiteWeight step.</p>
+
+<p>When <code>Generative.autonoise.enabled</code> is false, <code>Workflow.iteration_noise_scales</code> overrides <code>Generative.inference.noise_scale</code> only for the listed iterations. Likewise, <code>Workflow.iteration_diffusion_epochs</code> overrides <code>Generative.training.epochs</code>; omitted iterations use the Generative fallback values. Set <code>VCN.plot_committor_projections: true</code> only when committor maps on <code>cvs_to_plot</code> should be written during <code>committor_slice</code>.</p>
 
 <p><code>VCN.q_variance</code> sets the half-width of the committor slice around <code>q=0.5</code> and must be between 0 and 0.5. The default <code>0.1</code> selects <code>0.4 &lt;= q &lt;= 0.6</code>. <code>VCN.n_targets</code> is a simple count limit: after this filter, the workflow writes the first N candidate frames in trajectory order. It does not cluster the candidates. With <code>require_n_targets: true</code>, the step fails if fewer than N candidates are available; otherwise, it writes all available candidates.</p>
+
+<h3>Automatic Diffusion Noise Selection</h3>
+
+<p>Enable AutoNoise in the same <code>Generative</code> configuration. It runs for each iteration's trained checkpoint and overrides the noise used by the following <code>sample_diffusion</code> stage. If <code>Workflow.iteration_noise_scales</code> contains any entries, the workflow emits a warning and ignores that mapping while AutoNoise is enabled. The scalar <code>Generative.inference.noise_scale</code> is also replaced by the automatic selection.</p>
+
+<pre><code>Workflow:
+  iteration_noise_scales: {}
+
+Generative:
+  autonoise:
+    enabled: true
+    reference:
+      state_a: /path/to/state_A.dcd
+      state_b: /path/to/state_B.dcd
+    search:
+      bounds: [0.5, 5.0]
+      refine_rounds: 3
+      max_samples: 512
+    save_dcd: true
+</code></pre>
+
+<p>The reference DCDs must contain the full model atom set in the same order as the current iteration's topology, with intact molecules across periodic boundaries. AutoNoise reuses the checkpoint's <code>coordinate_contract.pt</code> for alignment and normalization. By default, representative C-alpha pair distances define the A, intermediate (I), and B regions. Local bond, angle, clash, and chirality defects are diagnostic rather than rejection criteria because the generated structures are proposals for subsequent C-alpha targeted MD. This does not establish physical transition paths or certify all-atom geometry.</p>
+
+<p>The search starts with the noise interval endpoints and midpoint, then performs <code>refine_rounds</code> subdivisions around observed basin switches. It prioritizes intermediate yield and uses diversity to distinguish candidates, followed by additional sampling of the best candidates within the total budget. Multiple noise levels share a GPU batch. The initial Gaussian and complete diffusion schedule remain unchanged; only the reverse-step noise multiplier is calibrated. The first verified recommendation becomes this iteration's scalar sampling noise. No recommendation is treated as a failed workflow stage: sampling stops rather than silently falling back to a manual value.</p>
+
+<p>Reference subsampling, batch sizes, geometry checks, region thresholds, and other advanced settings are centralized in <a href="configs/Generative.autonoise.yaml"><code>configs/Generative.autonoise.yaml</code></a>. Override individual settings under <code>Generative.autonoise</code> when needed; omitted nested values retain their defaults.</p>
+
+<pre><code># Run calibration for an already-trained iteration
+gen-compas --config workflow.yaml --iteration 0 --run_step autonoise_diffusion
+
+# Sample using that iteration's saved automatic selection
+gen-compas --config workflow.yaml --iteration 0 --run_step sample_diffusion
+
+# Force a new calibration attempt
+gen-compas --config workflow.yaml --iteration 0 --rerun_step autonoise_diffusion
+</code></pre>
+
+<p>The selected value is stored in the existing <code>effective_config.yaml</code> and <code>workflow_manifest.json</code>, so it survives isolated child processes and resumed invocations. A selection is tied to the iteration, checkpoint, coordinate contract, reference inputs, and calibration settings. On resume, a stale completed calibration is rerun; starting directly at sampling without a current completed calibration produces an error instructing you to run <code>autonoise_diffusion</code>.</p>
+
+<p>Retraining with AutoNoise enabled invalidates calibration and its downstream stages. Recalibration marks sampling and later stages pending. A single-step command still executes only the requested stage; a subsequent <code>--resume</code> executes the pending stages. Each calibration attempt uses a fresh <code>autonoise/attempt_001/</code>, <code>attempt_002/</code>, etc., preserving earlier plots and DCDs during retries.</p>
+
+<p>Each attempt produces only <code>noise_distribution.png</code> and, when <code>save_dcd: true</code>, one full-atom <code>noise_&lt;value&gt;.dcd</code> per tested noise. The figure shows A/I/B fractions, total and intermediate counts, and the recommended value; excluded samples appear in gray. Read the DCDs with the existing <code>Generative.data.topology_path</code>. No additional CSV, NPZ, selection YAML, or topology copy is written. With <code>save_dcd: false</code>, only the figure is saved.</p>
 
 <h3>Iteration Output Layout</h3>
 
@@ -193,6 +245,7 @@ VCN:
     effective_config.yaml
     workflow_manifest.json
     models/diffusion/
+    autonoise/attempt_001/  # when enabled: noise_distribution.png and optional DCDs
     generated/
     cluster_targets/
     targets/
@@ -201,6 +254,7 @@ VCN:
   1st.Iteration/
     models/diffusion/
     models/vcn/
+    autonoise/attempt_001/  # independent calibration for this iteration
     generated/
     committor_slice/
     targets/
@@ -220,6 +274,7 @@ VCN:
 <pre><code>gen-compas --config workflow.yaml --iteration 1 --run_step riteweight
 gen-compas --config workflow.yaml --iteration 1 --run_step fel_estimate
 gen-compas --config workflow.yaml --iteration 1 --run_step namd
+gen-compas --config workflow.yaml --iteration 1 --run_step autonoise_diffusion
 gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 </code></pre>
 
@@ -228,6 +283,7 @@ gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 <p><strong>Available <code>&lt;STEP_NAME&gt;</code> options:</strong></p>
 <ul>
 <li><code>train_diffusion</code></li>
+<li><code>autonoise_diffusion</code> (when enabled)</li>
 <li><code>sample_diffusion</code></li>
 <li><code>train_committor</code></li>
 <li><code>committor_slice</code></li>
@@ -238,7 +294,7 @@ gen-compas --config workflow.yaml --iteration 1 --run_step sample_diffusion
 <li><code>fel_estimate</code></li>
 </ul>
 
-<p><code>clustering</code> belongs to iteration 0, while <code>train_committor</code> and <code>committor_slice</code> belong to iterations 1 and later. <code>fel_estimate</code> is available only when <code>Workflow.run_fel</code> is enabled. Invalid iteration/step combinations produce a command-line error before the stage starts.</p>
+<p><code>clustering</code> belongs to iteration 0, while <code>train_committor</code> and <code>committor_slice</code> belong to iterations 1 and later. <code>autonoise_diffusion</code> is available only when <code>Generative.autonoise.enabled</code> is true. <code>fel_estimate</code> is available only when <code>Workflow.run_fel</code> is enabled. Invalid iteration/step combinations produce a command-line error before the stage starts.</p>
 
 <h2 id="configuration-file-configyaml">Configuration File (config.yaml)</h2>
 
@@ -289,6 +345,7 @@ gen-compas-config --config complete.workflow.yaml --validate-only
 <li><strong>Scope:</strong> This model generates joint configurations for a fixed topology. Diffusion timesteps are denoising steps, not physical time or an unbound-to-bound reaction coordinate. Learning binding configurations requires representative joint training data; the architecture alone does not establish transition kinetics or a physical binding pathway. Coordinate alignment applies one rigid transform to the full complex, preserving inter-chain placement before normalization.</li>
 <li><strong>training:</strong> Optimization and logging parameters.</li>
 <li><strong>inference:</strong> Sampling configuration (checkpoint, output, batch size, etc.).</li>
+<li><strong>autonoise:</strong> Optional per-iteration calibration before sampling. Common settings are <code>enabled</code>, A/B reference paths, <code>search.bounds</code>, <code>search.refine_rounds</code>, <code>search.max_samples</code>, and <code>save_dcd</code>. Output paths are managed by the workflow.</li>
 </ul>
 
 <p><code>Generative.data.alignment_atomselect</code> defaults to <code>all</code>. Alignment is completed before mean/std construction, so the saved normalization tensors and the coordinates seen during training are derived from the same aligned trajectory.</p>
@@ -399,7 +456,7 @@ For generative sampling, we recommend noise values in the approximate range <cod
 </p>
 
 <p>
-Increasing the sampling noise moves generated structures farther from the current data distribution and improves diversity, whereas decreasing the noise keeps generated structures closer to previously sampled configurations but reduces exploration. In all cases, the final acceptance criterion should not be the generative loss alone, but the downstream molecular dynamics diagnostics, including TMD convergence, bidirectional committor consistency, shooting validation where feasible, and reproducibility across independent Gen-COMPAS runs.
+Changing the reverse sampling noise can alter basin occupancy and intermediate yield, and the dependence need not be monotonic. AutoNoise measures these changes with pilot samples instead of assuming that larger noise always improves exploration. In all cases, the final acceptance criterion should not be the generative loss alone, but the downstream molecular dynamics diagnostics, including TMD convergence, bidirectional committor consistency, shooting validation where feasible, and reproducibility across independent Gen-COMPAS runs.
 </p>
 
 <h2>Dependencies</h2>

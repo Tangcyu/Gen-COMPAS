@@ -1,0 +1,11 @@
+# Defaults for RiteWeight.colvars; override under RiteWeight.colvars in your run YAML.
+# periodicities is optional: omission means nonperiodic for every configured CV.
+cv:
+- CV1
+- CV2
+save_cols: all
+periodic_cols: []
+bins: 200
+temperature_K: 300.0
+xlim: null
+ylim: null

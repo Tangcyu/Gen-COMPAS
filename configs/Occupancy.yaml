@@ -1,0 +1,7 @@
+# Top-level defaults for Occupancy; override under Occupancy in your run YAML.
+pdb_dir: null
+topology_file: null
+pdb_file: null
+output_dir: ./output_pdbs
+add_hydrogens: true
+selection: protein and name CA

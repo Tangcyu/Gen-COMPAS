@@ -1,0 +1,10 @@
+# Top-level defaults for Workflow; override under Workflow in your run YAML.
+# Nested defaults: Workflow.initial_diffusion_data.yaml
+root_dir: ./Iterations
+initial_data_folders: []
+run_initial_unbiased: false
+run_fel: true
+warm_start_diffusion: true
+iteration_noise_scales: {}
+iteration_diffusion_epochs: {}
+isolate_steps: true

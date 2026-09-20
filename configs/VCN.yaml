@@ -1,0 +1,36 @@
+# Top-level defaults for VCN; override under VCN in your run YAML.
+device: cuda:0
+label: committor
+sampling_path: .
+z_matrix: true
+use_all: false
+pair_distance: false
+dcdfile: null
+traj_fns: null
+topfile: null
+atomindex: []
+atomselect: protein and name CA
+stride: 1
+cvs: []
+periodic: false
+val_ratio: 0.1
+random_seed: 42
+time_shift: 1
+trajectory_column: trajectory_id
+epochs: 5000
+learning_rate: 0.0001
+patience: 200
+batch_size_factor: 0.6
+num_layers: 4
+num_nodes: 64
+k: 1.0
+out_dir: null
+cvs_to_plot: null
+plot_committor_projections: false
+gendcdfile: null
+model_fn: null
+slice_dir: null
+q_variance: 0.1
+n_targets: 20
+require_n_targets: true
+extra_label: null

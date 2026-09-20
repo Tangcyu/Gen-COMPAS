@@ -1,0 +1,336 @@
+# Full Gen-COMPAS configuration.
+# Expands config.yaml with every default from configs/*.yaml, including AutoNoise.
+# Explicit values from config.yaml take precedence over the packaged defaults.
+# Replace the example paths and system-specific basin/projection definitions.
+# The workflow resolves iteration-specific input/output paths automatically.
+# null retains its option-specific meaning (unset, inherited, or workflow-managed).
+# See configs/README.md for the authoritative default files and override rules.
+
+# Workflow — defaults: configs/Workflow.initial_diffusion_data.yaml, configs/Workflow.yaml
+Workflow:
+  root_dir: ./Iterations
+  initial_data_folders: []
+  run_initial_unbiased: false
+  run_fel: true
+  warm_start_diffusion: true
+  iteration_noise_scales: {}
+  iteration_diffusion_epochs: {}
+  isolate_steps: true
+  initial_diffusion_data:
+    dcd_path: /PATH/TO/INITIAL/UNBIASED.dcd
+    topology_path: /PATH/TO/INITIAL/TOPOLOGY.psf
+
+# Generative — defaults: configs/Generative.autonoise.yaml, configs/Generative.coordinate_contract.yaml, configs/Generative.data.yaml, configs/Generative.diffusion.yaml, configs/Generative.inference.yaml, configs/Generative.model.yaml, configs/Generative.training.yaml, configs/Generative.yaml
+Generative:
+  save_dir: PATH/TO/YOUR/MODEL/SAVING
+  device: cuda:0
+  random_seed: 42
+  init_checkpoint_path: null
+  autonoise:
+    enabled: false
+    output_dir: ./output_autonoise
+    seed: 42
+    save_dcd: true
+    reference:
+      state_a: /PATH/TO/STATE_A.dcd
+      state_b: /PATH/TO/STATE_B.dcd
+      frames_per_state: 64
+      atomselect: name CA
+      max_feature_atoms: 64
+    search:
+      bounds:
+      - 0.5
+      - 5.0
+      pilot_samples: 32
+      refine_rounds: 3
+      verify_top_k: 3
+      verify_samples: 128
+      max_samples: 512
+      max_batch_size: 32
+      min_valid_fraction: 0.8
+      min_basin_samples: 8
+      recommendations: 2
+    geometry:
+      mode: diagnostic
+      bond_median_range_nm:
+      - 0.08
+      - 0.25
+      bond_relative_tolerance: 0.15
+      max_bond_relative_tolerance: 0.3
+      angle_cosine_tolerance: 0.2
+      max_angle_cosine_tolerance: 0.5
+      reference_min_valid_fraction: 0.8
+      reference_slack: 1.5
+      clash_distance_nm: 0.12
+    region:
+      basin_quantile: 0.95
+      basin_margin: 0.05
+      corridor_factor: 2.0
+      corridor_floor_nm: 0.05
+      progress_margin: 0.1
+      cluster_rms_nm: 0.1
+    terminal_check:
+      enabled: true
+      train_fraction: 0.6
+  coordinate_contract:
+    enabled: true
+    source: null
+    filename: coordinate_contract.pt
+    reference_filename: canonical_reference.pdb
+    alignment_atomselect: null
+  data:
+    dcd_path: ./output_riteweight/diffusion_training.dcd
+    topology_path: ./output_riteweight/diffusion_training.pdb
+    alignment_atomselect: all
+  diffusion:
+    timesteps: 200
+    beta_schedule: cosine
+  inference:
+    checkpoint: PATH/TO/YOUR/checkpoint
+    output: PATH/TO/OUTPUT/candidates.dcd
+    num_samples: 1000
+    sample_batch: 100
+    noise_scale: 1.5
+  model:
+    node_feature_dim: 64
+    time_embedding_dim: 128
+    hidden_dim: 128
+    num_schnet_layers: 4
+    num_gat_layers: 2
+    residue_attn_heads: 4
+    k_neighbors: 16
+    num_segment_layers: 2
+    segment_distance_rbf: 16
+  training:
+    epochs: 50
+    batch_size: 64
+    lr: 0.0001
+    weight_decay: 1.0e-06
+    grad_clip: 1.0
+    num_workers: 16
+    save_interval: 50
+
+# VCN — defaults: configs/VCN.yaml
+VCN:
+  device: cuda:0
+  label: test
+  sampling_path: .
+  z_matrix: true
+  use_all: false
+  pair_distance: false
+  dcdfile:
+  - ./output_riteweight/diffusion_training.dcd
+  traj_fns:
+  - ./output_riteweight/vcn_training.pt
+  topfile: ./output_riteweight/diffusion_training.pdb
+  atomindex: []
+  atomselect: protein and name CA
+  stride: 1
+  cvs:
+  - CV1
+  - CV2
+  periodic: false
+  val_ratio: 0.1
+  random_seed: 42
+  time_shift: 1
+  trajectory_column: trajectory_id
+  epochs: 5000
+  learning_rate: 0.0001
+  patience: 200
+  batch_size_factor: 0.6
+  num_layers: 4
+  num_nodes: 64
+  k: 1
+  out_dir: PATH/TO/OUTPUT/
+  cvs_to_plot:
+  - CV1
+  - CV2
+  plot_committor_projections: false
+  gendcdfile: PATH/TO/GENERATED.dcd
+  model_fn: PATH/TO/CHECKPOINT
+  slice_dir: PATH/TO/Slicing/OUTPUT
+  q_variance: 0.1
+  n_targets: 20
+  require_n_targets: true
+  extra_label: null
+
+# Clustering — defaults: configs/Clustering.yaml
+Clustering:
+  topology: PATH/TO/PSF.psf
+  trajectory: PATH/TO/DCD.dcd
+  atom_selection: protein and name CA
+  output_dir: ./output_clusters
+  n_clusters: null
+  n_per_cluster: 2
+  max_k: 8
+  select_farthest: true
+  random_seed: 0
+
+# Occupancy — defaults: configs/Occupancy.yaml
+Occupancy:
+  pdb_dir: ./input_pdbs
+  topology_file: system_withH.psf
+  pdb_file: reference_withH.pdb
+  output_dir: ./output_pdbs
+  add_hydrogens: true
+  selection: protein and name CA
+
+# NAMD — defaults: configs/NAMD.execution.yaml, configs/NAMD.phases.yaml, configs/NAMD.targets.yaml, configs/NAMD.yaml
+NAMD:
+  namd_path: /PATH/TO/namd3
+  template_path: /PATH/TO/NAMD_inputs
+  output_dir: ./output_namd
+  tmd_force_constant: 10000.0
+  existing_job_policy: error
+  protocols:
+  - name: A
+    tmd_template: TMD.A.conf
+    unbiased_template: Unbiased.A.conf
+    initial_unbiased_template: Initial.A.conf
+  - name: B
+    tmd_template: TMD.B.conf
+    unbiased_template: Unbiased.B.conf
+    initial_unbiased_template: Initial.B.conf
+  execution:
+    device: gpu
+    parallel_jobs: 2
+    dry_run: false
+    cpu:
+      threads_per_job: 8
+      command:
+      - '{namd}'
+      - +p{threads}
+      - '{config}'
+    gpu:
+      devices:
+      - '0'
+      - '1'
+      threads_per_job: 1
+      command:
+      - '{namd}'
+      - +p{threads}
+      - +devices
+      - '{device}'
+      - '{config}'
+  phases:
+    tmd: true
+    unbiased: true
+  targets:
+    path: ./output_pdbs
+    pattern: '*.pdb'
+    recursive: false
+    target_filename: output.pdb
+
+# RiteWeight — defaults: configs/RiteWeight.colvars.yaml, configs/RiteWeight.committor_labels.yaml, configs/RiteWeight.features.yaml, configs/RiteWeight.io.yaml, configs/RiteWeight.outputs.yaml, configs/RiteWeight.pairing.yaml, configs/RiteWeight.pmf_output.yaml, configs/RiteWeight.riteweight.yaml, configs/RiteWeight.yaml
+RiteWeight:
+  folders:
+  - PATH/TO/TRAJECTORY/FOLDER
+  dcd_pattern: '*Unbiased.[AB].dcd'
+  colvars_pattern: '*Unbiased.[AB].colvars.traj'
+  tag_regex: \.([AB])(?:\.|$)
+  colvars:
+    cv:
+    - CV1
+    - CV2
+    save_cols: all
+    periodic_cols: []
+    bins: 200
+    temperature_K: 300.0
+    xlim: null
+    ylim: null
+  committor_labels:
+    enabled: true
+    cvs_to_label:
+    - CV1
+    - CV2
+    basin_A:
+    - 0.0
+    - 10.0
+    basin_B:
+    - 10.0
+    - 0.0
+    basin_size:
+    - 5.0
+    - 5.0
+    k_prefactor: 1.0
+    angle_unit: degree
+  features:
+    mode: internal_zmat
+    internal_zmat:
+      atomselect: protein and name CA
+      atom_order: null
+      max_atoms: null
+      order: index
+    distances:
+      atom_pairs: []
+    cache:
+      enabled: true
+      format: npz
+      path: ./output_riteweight/features_internal_zmat.npz
+      policy: write_if_missing
+  io:
+    topology: PATH/TO/TOPOLOGY.psf
+    out: ./output_riteweight
+    stride: 1
+  outputs:
+    frame_csv: frame_weights.csv
+    segment_csv: segment_weights.csv
+    convergence_plot: convergence_delta.png
+    vcn:
+      enabled: true
+      filename: vcn_training.pt
+    diffusion:
+      enabled: true
+      trajectory: diffusion_training.dcd
+      topology: diffusion_training.pdb
+      atomselect: protein and not element H
+      alignment_atomselect: null
+      reference_path: null
+      chunk_size: 1000
+  pairing:
+    allow_skip_first_colvars: true
+    strict: true
+  pmf_output:
+    enabled: false
+    filename: pmf.dat
+    F_max: null
+    sigma_bins: null
+    scaled_bins: null
+    scaled_filename: pmf_scaled.dat
+  riteweight:
+    n_clusters: 100
+    n_iter: 200
+    tol: 1.0e-06
+    tol_window: 5
+    avg_last: 20
+    seed: 2026
+    lag: 50
+
+# FEL_estimate — defaults: configs/FEL_estimate.yaml
+FEL_estimate:
+  input: ./output_riteweight/vcn_training.pt
+  output_dir: ./output_riteweight/fel
+  weight_column: fel_weight
+  temperature_K: 300.0
+  probability_floor: 1.0e-300
+  landscape_F_max: 10.0
+  projections:
+  - name: CV1_CV2
+    cvs:
+    - CV1
+    - CV2
+    bins:
+    - 200
+    - 200
+    ranges:
+    - - 0.0
+      - 180.0
+    - - 0.0
+      - 180.0
+    periodicities:
+    - true
+    - true
+    sigma_bins:
+    - 1.0
+    - 1.0
+    F_max: 10.0

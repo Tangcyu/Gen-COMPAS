@@ -1,0 +1,6 @@
+# Defaults for Generative.inference; override under Generative.inference in your run YAML.
+checkpoint: null
+output: null
+num_samples: 1000
+sample_batch: 100
+noise_scale: 1.5

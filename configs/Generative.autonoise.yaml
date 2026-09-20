@@ -1,0 +1,50 @@
+# Advanced defaults; override individual keys under Generative.autonoise.
+# Normal runs only need the short section shown in the root config.yaml.
+enabled: false
+output_dir: ./output_autonoise  # workflow resolves iteration/attempt directories
+seed: 42
+save_dcd: true
+
+reference:
+  state_a: null
+  state_b: null
+  frames_per_state: 64
+  atomselect: name CA
+  max_feature_atoms: 64
+
+search:
+  bounds: [0.5, 5.0]
+  pilot_samples: 32
+  refine_rounds: 3
+  verify_top_k: 3
+  verify_samples: 128
+  max_samples: 512
+  max_batch_size: 32
+  min_valid_fraction: 0.8
+  min_basin_samples: 8
+  recommendations: 2
+
+# Diagnostic mode keeps local defects for subsequent CA-targeted MD.
+# Strict mode additionally excludes samples that fail these checks.
+geometry:
+  mode: diagnostic
+  bond_median_range_nm: [0.08, 0.25]
+  bond_relative_tolerance: 0.15
+  max_bond_relative_tolerance: 0.3
+  angle_cosine_tolerance: 0.2
+  max_angle_cosine_tolerance: 0.5
+  reference_min_valid_fraction: 0.8
+  reference_slack: 1.5
+  clash_distance_nm: 0.12
+
+region:
+  basin_quantile: 0.95
+  basin_margin: 0.05
+  corridor_factor: 2.0
+  corridor_floor_nm: 0.05
+  progress_margin: 0.1
+  cluster_rms_nm: 0.1
+
+terminal_check:
+  enabled: true
+  train_fraction: 0.6

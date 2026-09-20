@@ -1,0 +1,3 @@
+# Defaults for RiteWeight.pairing; override under RiteWeight.pairing in your run YAML.
+allow_skip_first_colvars: true
+strict: true

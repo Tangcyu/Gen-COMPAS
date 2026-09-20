@@ -1,0 +1,4 @@
+# Defaults for RiteWeight.io; override under RiteWeight.io in your run YAML.
+topology: null
+out: ./output_riteweight
+stride: 1

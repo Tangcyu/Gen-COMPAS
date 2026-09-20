@@ -1,4 +1,5 @@
-# Minimal Gen-COMPAS input. All omitted values come from common/config.py.
+# Minimal Gen-COMPAS input. Omitted values are loaded from configs/*.yaml.
+# See configs/README.md for Section.yaml / Section.subsection.yaml defaults.
 # Replace the paths and the system-specific basin/projection definitions.
 
 Workflow:

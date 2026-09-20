@@ -1,0 +1,8 @@
+# Defaults for RiteWeight.riteweight; override under RiteWeight.riteweight in your run YAML.
+n_clusters: 100
+n_iter: 200
+tol: 1.0e-06
+tol_window: 5
+avg_last: 20
+seed: 2026
+lag: 50

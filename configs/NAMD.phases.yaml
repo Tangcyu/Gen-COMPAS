@@ -1,0 +1,3 @@
+# Defaults for NAMD.phases; override under NAMD.phases in your run YAML.
+tmd: true
+unbiased: true

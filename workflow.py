@@ -17,6 +17,7 @@ from common.runner import STEP_NAMES, run_step
 
 BOOTSTRAP_STEPS = (
     "train_diffusion",
+    "autonoise_diffusion",
     "sample_diffusion",
     "clustering",
     "occupancy",
@@ -28,6 +29,7 @@ BOOTSTRAP_STEPS = (
 ITERATIVE_STEPS = (
     "train_diffusion",
     "train_committor",
+    "autonoise_diffusion",
     "sample_diffusion",
     "committor_slice",
     "occupancy",
@@ -45,6 +47,8 @@ def iteration_steps(config: Mapping[str, Any], iteration: int) -> list[str]:
     """Return the ordered stages for bootstrap iteration 0 or iterations 1+."""
     steps = list(BOOTSTRAP_STEPS if iteration == 0 else ITERATIVE_STEPS)
     workflow = config["Workflow"]
+    if not config["Generative"].get("autonoise", {}).get("enabled", False):
+        steps.remove("autonoise_diffusion")
     if iteration == 0 and workflow.get("run_initial_unbiased", False):
         steps.insert(0, "initial_unbiased")
     if not workflow.get("run_fel", True):
@@ -119,6 +123,15 @@ def _run_special_step(step: str, config: Mapping[str, Any]):
     return run_step(step, config)
 
 
+def _restore_autonoise_selection(config, manifest):
+    from common.autonoise_state import apply_autonoise_selection
+    entry = manifest["steps"].get("autonoise_diffusion", {})
+    if entry.get("status") != "completed" or not isinstance(entry.get("selection"), dict):
+        raise RuntimeError("Run autonoise_diffusion successfully before sample_diffusion; "
+                           "automatic noise selection is enabled.")
+    return apply_autonoise_selection(config, entry.get("selection"))
+
+
 def _run_isolated_step(step: str, effective_config: Path) -> None:
     """Run a regular stage in a clean runtime and propagate any failure.
 
@@ -190,6 +203,7 @@ def run_iteration(
 ) -> list[str]:
     """Run one complete bootstrap or committor-guided iteration."""
     config = resolve_iteration_config(base_config, iteration)
+    autonoise_enabled = config["Generative"].get("autonoise", {}).get("enabled", False)
     all_steps = iteration_steps(config, iteration)
     single_steps = [step for step in (run_step_name, rerun_step) if step is not None]
     if len(single_steps) > 1:
@@ -217,7 +231,7 @@ def run_iteration(
         print(f"Resolved iteration directory: {iteration_dir}")
         print(
             "Resolved sampling noise: "
-            f"{config['Generative']['inference']['noise_scale']}"
+            f"{'pending autonoise_diffusion' if autonoise_enabled else config['Generative']['inference']['noise_scale']}"
         )
         print(
             "Resolved diffusion epochs: "
@@ -232,20 +246,38 @@ def run_iteration(
 
     iteration_dir.mkdir(parents=True, exist_ok=True)
     effective_config = iteration_dir / "effective_config.yaml"
-    write_effective_config(config, effective_config)
     manifest_path = iteration_dir / "workflow_manifest.json"
     manifest = _read_manifest(manifest_path, iteration)
+    if autonoise_enabled and manifest["steps"].get("autonoise_diffusion", {}).get("status") == "completed":
+        try:
+            # Keep the effective config complete even for a later single-step
+            # invocation that does not visit calibration or sampling.
+            _restore_autonoise_selection(config, manifest)
+        except (RuntimeError, OSError):
+            pass  # Recalibration or sampling below enforces a current selection.
+    write_effective_config(config, effective_config)
 
     for step in steps:
         previous = manifest["steps"].get(step, {})
-        if run_step_name is not None and previous.get("status") == "completed":
-            print(
-                f"[run_step] Step is already completed: {step}. "
-                f"Use --rerun_step {step} to force it to run again."
-            )
-            continue
-        if resume and rerun_step is None and previous.get("status") == "completed":
-            print(f"[resume] Skipping completed step: {step}")
+        skip = (previous.get("status") == "completed" and rerun_step is None
+                and (run_step_name is not None or resume))
+        if skip and autonoise_enabled and step in ("autonoise_diffusion", "sample_diffusion"):
+            try:
+                selection = _restore_autonoise_selection(config, manifest)
+                if step == "sample_diffusion" and (
+                    previous.get("autonoise_fingerprint") != selection["fingerprint"]
+                    or previous.get("noise_scale") != selection["noise_scale"]
+                ):
+                    skip = False
+            except (RuntimeError, OSError):
+                # A completed step cannot authorize reuse of a different model
+                # or changed references/settings. Recalibrate on resume.
+                print(f"[autonoise] Previous selection is unavailable or stale for {step}.")
+                skip = False
+            if skip:
+                write_effective_config(config, effective_config)
+        if skip:
+            print(f"[resume/run_step] Skipping completed step: {step}. Use --rerun_step {step} to force it.")
             continue
         if resume and rerun_step is None and previous:
             print(
@@ -255,6 +287,18 @@ def run_iteration(
 
         started = datetime.now(timezone.utc).isoformat()
         attempts = int(previous.get("attempts", 0)) + 1
+        if autonoise_enabled and step in ("train_diffusion", "autonoise_diffusion"):
+            config["Workflow"]["runtime"].pop("autonoise_selection", None)
+            config["Generative"]["inference"]["noise_scale"] = None
+            first = all_steps.index("autonoise_diffusion") + (step == "autonoise_diffusion")
+            for dependent in all_steps[first:]:
+                if dependent in manifest["steps"]:
+                    manifest["steps"][dependent].update(status="pending", invalidated_by=step)
+            if step == "autonoise_diffusion":
+                # Preserve previous plots/DCDs and keep retries safe after an
+                # interrupted process, including uncommitted output directories.
+                output = iteration_dir / "autonoise" / f"attempt_{attempts:03d}"
+                config["Generative"]["autonoise"]["output_dir"] = str(output)
         manifest["steps"][step] = {
             "status": "running",
             "started": started,
@@ -263,13 +307,24 @@ def run_iteration(
         _write_manifest(manifest_path, manifest)
         print(f"\n=== Iteration {iteration}: {step} ===")
         try:
-            if (
-                config["Workflow"].get("isolate_steps", True)
-                and step != "initial_unbiased"
-            ):
+            if autonoise_enabled and step == "sample_diffusion":
+                _restore_autonoise_selection(config, manifest)
+            write_effective_config(config, effective_config)
+            isolated = config["Workflow"].get("isolate_steps", True) and step != "initial_unbiased"
+            if isolated:
                 _run_isolated_step(step, effective_config)
             else:
                 _run_special_step(step, config)
+            if step == "autonoise_diffusion":
+                from common.autonoise_state import apply_autonoise_selection
+                result_config = load_config(effective_config) if isolated else config
+                selection = result_config["Workflow"]["runtime"].get("autonoise_selection")
+                manifest["steps"][step]["selection"] = apply_autonoise_selection(config, selection)
+                write_effective_config(config, effective_config)
+            if step == "sample_diffusion":
+                manifest["steps"][step]["noise_scale"] = config["Generative"]["inference"]["noise_scale"]
+                if autonoise_enabled:
+                    manifest["steps"][step]["autonoise_fingerprint"] = config["Workflow"]["runtime"]["autonoise_selection"]["fingerprint"]
         except BaseException as exc:
             status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
             manifest["steps"][step].update(
@@ -297,7 +352,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             f"Available step names:\n  {step_names}\n\n"
             f"Iteration 0:\n  {' -> '.join(BOOTSTRAP_STEPS)}\n\n"
-            f"Iterations 1+:\n  {' -> '.join(ITERATIVE_STEPS)}"
+            f"Iterations 1+:\n  {' -> '.join(ITERATIVE_STEPS)}\n\n"
+            "autonoise_diffusion is included only when Generative.autonoise.enabled is true."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

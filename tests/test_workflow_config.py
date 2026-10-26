@@ -57,6 +57,30 @@ def test_later_iteration_uses_previous_cumulative_data(tmp_path):
     )
 
 
+def test_diffusion_export_must_match_the_current_training_topology(tmp_path):
+    initial = resolve_iteration_config(minimal_config(tmp_path), 0)
+    later = resolve_iteration_config(minimal_config(tmp_path), 2)
+
+    assert initial["RiteWeight"]["outputs"]["diffusion"]["reference_topology"] == str(
+        tmp_path / "initial.pdb"
+    )
+    assert later["Generative"]["data"]["topology_path"].endswith(
+        "1st.Iteration/riteweight/diffusion_training.psf"
+    )
+    assert (
+        later["RiteWeight"]["outputs"]["diffusion"]["reference_topology"]
+        == later["Generative"]["data"]["topology_path"]
+    )
+
+
+def test_pdb_diffusion_export_topology_is_rejected(tmp_path):
+    base = minimal_config(tmp_path)
+    base["RiteWeight"]["outputs"]["diffusion"]["topology"] = "diffusion_training.pdb"
+
+    with pytest.raises(ValueError, match=r"must end in \.psf"):
+        resolve_iteration_config(base, 0)
+
+
 def test_iteration_noise_scale_override_and_fallback(tmp_path):
     base = minimal_config(tmp_path)
     base["Generative"]["inference"]["noise_scale"] = 1.25

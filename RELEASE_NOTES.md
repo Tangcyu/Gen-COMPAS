@@ -85,6 +85,12 @@ restartable pipeline.
   `common/config.py`.
 - FEL estimation uses `fel_weight` by default. The legacy `weight` column remains
   the transition-origin weight used by VCN and is retained for compatibility.
+- The RiteWeight diffusion topology is now `diffusion_training.psf`, and the
+  default `RiteWeight.outputs.diffusion.atomselect: null` exports the atoms of
+  the diffusion model's training topology instead of `protein and not element H`,
+  which dropped ligands and nonstandard residues such as lipidated cysteines.
+  Configurations naming a `.pdb` diffusion topology are rejected. Rerun the
+  `riteweight` step of completed iterations before continuing them.
 - NAMD and Colvars remain external dependencies and are not installed by pip.
   NAMD 3.0.2 or newer is recommended.
 

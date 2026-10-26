@@ -23,7 +23,7 @@ Generative:
   random_seed: 42                          # Random seed for reproducibility
   data:
     dcd_path: "./output_riteweight/diffusion_training.dcd"
-    topology_path: "./output_riteweight/diffusion_training.pdb"
+    topology_path: "./output_riteweight/diffusion_training.psf"
     alignment_atomselect: "all"            # RMSD fit selection; transform is applied to every atom
 
   model:
@@ -67,7 +67,7 @@ VCN:
   pair_distance  : False
   dcdfile        : ["./output_riteweight/diffusion_training.dcd"]
   traj_fns       : ["./output_riteweight/vcn_training.pt"]
-  topfile        : "./output_riteweight/diffusion_training.pdb"
+  topfile        : "./output_riteweight/diffusion_training.psf"
   atomindex      : []
   atomselect     : "protein and name CA"
   stride         : 1
@@ -224,8 +224,9 @@ RiteWeight:
     diffusion:
       enabled: true
       trajectory: "diffusion_training.dcd"
-      topology: "diffusion_training.pdb"    # Matching selected topology for the DCD
-      atomselect: "protein and not element H"
+      topology: "diffusion_training.psf"    # Matching topology; PSF keeps residue names and bonds
+      atomselect: null                       # null exports the atoms of reference_topology
+      reference_topology: null               # Set by the workflow to the iteration's diffusion topology
       alignment_atomselect: null             # null uses the RiteWeight structural feature selection
       chunk_size: 1000
 

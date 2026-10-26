@@ -15,13 +15,14 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from common.feature_contract import FEATURE_SCHEMA
-from common.config import normalize_config_aliases
+from common.config import check_diffusion_topology_path, normalize_config_aliases
 from tools.frame_weights import segment_weights_to_frame_weights
 from tools.tensor_table import save_tensor_table
 from utils.mdtraj_io import iterload as quiet_md_iterload
 from utils.mdtraj_io import load as quiet_md_load
 from utils.mdtraj_io import load_frame as quiet_md_load_frame
 from utils.mdtraj_io import load_topology as quiet_md_load_topology
+from utils.mdtraj_io import save_psf
 
 try:
     import yaml
@@ -789,6 +790,104 @@ def check_mismatch_report(pairs, top, stride, allow_skip_first):
     print(f"\n[INFO] total pairs: {len(rep)}, ok: {int(rep['ok'].sum())}, bad: {len(bad)}")
 
 
+def _atom_label(atom) -> str:
+    residue = atom.residue
+    return (
+        f"atom {atom.index} ({residue.segment_id or '-'}:{residue.name}"
+        f"{residue.resSeq}:{atom.name})"
+    )
+
+
+def select_diffusion_atoms(
+    topology: "md.Topology",
+    atomselect: Optional[str],
+    reference: Optional["md.Topology"] = None,
+) -> np.ndarray:
+    """Return the ordered RiteWeight-topology atoms exported for diffusion.
+
+    ``reference`` is the topology the current diffusion model was trained on.
+    Without ``atomselect``, its atoms are located in ``topology`` in order by
+    segment ID (when both define the same IDs), residue number and atom name,
+    so ligands and nonstandard residues such as lipidated cysteines are kept.
+    An explicit ``atomselect`` must select exactly those atoms. Without a
+    reference, a null ``atomselect`` exports every atom.
+    """
+    if atomselect:
+        atom_indices = topology.select(atomselect)
+        if len(atom_indices) == 0:
+            raise ValueError(f"Diffusion atom selection matched no atoms: {atomselect!r}")
+        if reference is None:
+            return atom_indices
+    elif reference is None:
+        return np.arange(topology.n_atoms, dtype=int)
+
+    source_atoms = list(topology.atoms)
+    reference_atoms = list(reference.atoms)
+    reference_segments = {atom.residue.segment_id for atom in reference_atoms}
+    use_segment = "" not in reference_segments and reference_segments <= {
+        atom.residue.segment_id for atom in source_atoms
+    }
+
+    def key(atom):
+        residue = atom.residue
+        segment = residue.segment_id if use_segment else None
+        return segment, residue.resSeq, atom.name
+
+    source_keys = [key(atom) for atom in source_atoms]
+    reference_keys = [key(atom) for atom in reference_atoms]
+    requirement = (
+        "The diffusion export must contain the atoms of the diffusion model's "
+        "training topology (RiteWeight.outputs.diffusion.reference_topology) "
+        "in the same order"
+    )
+    if atomselect:
+        selected_keys = [source_keys[index] for index in atom_indices]
+        if selected_keys != reference_keys:
+            mismatch = next(
+                (
+                    index
+                    for index, (selected, expected) in enumerate(
+                        zip(selected_keys, reference_keys)
+                    )
+                    if selected != expected
+                ),
+                min(len(selected_keys), len(reference_keys)),
+            )
+            selected = (
+                _atom_label(source_atoms[atom_indices[mismatch]])
+                if mismatch < len(atom_indices)
+                else "nothing"
+            )
+            expected = (
+                _atom_label(reference_atoms[mismatch])
+                if mismatch < len(reference_atoms)
+                else "nothing"
+            )
+            raise ValueError(
+                f"RiteWeight.outputs.diffusion.atomselect {atomselect!r} selects "
+                f"{len(atom_indices)} atoms, but the reference has "
+                f"{reference.n_atoms}; at position {mismatch} it selects "
+                f"{selected} where the reference has {expected}. {requirement}; "
+                "set atomselect to null to match them automatically."
+            )
+        return atom_indices
+
+    matched = []
+    position = 0
+    for reference_atom, reference_key in zip(reference_atoms, reference_keys):
+        while position < len(source_keys) and source_keys[position] != reference_key:
+            position += 1
+        if position == len(source_keys):
+            raise ValueError(
+                f"Reference {_atom_label(reference_atom)} has no match after the "
+                f"previously matched atoms in the RiteWeight topology. {requirement}, "
+                "with the same segment IDs, residue numbers and atom names."
+            )
+        matched.append(position)
+        position += 1
+    return np.asarray(matched, dtype=int)
+
+
 def write_diffusion_training_data(
     *,
     used_pairs: List[Tuple[str, str]],
@@ -800,15 +899,21 @@ def write_diffusion_training_data(
     dcd_path: str,
     topology_path: str,
     chunk_size: int,
+    reference_topology_path: Optional[str] = None,
 ):
-    """RMSD-align RiteWeight frames, then write a selected DCD and topology."""
+    """RMSD-align RiteWeight frames, then write a selected DCD and PSF.
+
+    With a reference, the PSF reproduces the diffusion model's training
+    topology, so a warm-started model sees identical names and bonds.
+    """
+    check_diffusion_topology_path(topology_path)
     topology = quiet_md_load_topology(top_path)
-    if atomselect:
-        atom_indices = topology.select(atomselect)
-    else:
-        atom_indices = np.arange(topology.n_atoms, dtype=int)
-    if len(atom_indices) == 0:
-        raise ValueError(f"Diffusion atom selection matched no atoms: {atomselect!r}")
+    reference_topology = (
+        quiet_md_load_topology(reference_topology_path)
+        if reference_topology_path
+        else None
+    )
+    atom_indices = select_diffusion_atoms(topology, atomselect, reference_topology)
 
     alignment_indices = topology.select(alignment_atomselect)
     if len(alignment_indices) < 3:
@@ -823,7 +928,12 @@ def write_diffusion_training_data(
 
     os.makedirs(os.path.dirname(dcd_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(topology_path) or ".", exist_ok=True)
-    wrote_topology = False
+    save_psf(
+        topology.subset(atom_indices)
+        if reference_topology is None
+        else reference_topology,
+        topology_path,
+    )
     total_frames = 0
 
     with md.formats.DCDTrajectoryFile(
@@ -841,15 +951,6 @@ def write_diffusion_training_data(
                 # apply that transform to every atom before selecting output.
                 chunk.superpose(reference, atom_indices=alignment_indices)
                 selected = chunk.atom_slice(atom_indices)
-                if not wrote_topology and selected.n_frames:
-                    # PDB stores residue names in three columns. Normalize
-                    # nonstandard four-character names (for example ALAD) in
-                    # generated topology artifacts while retaining atom order.
-                    for residue in selected.topology.residues:
-                        residue.name = residue.name[:3]
-                    selected[0].save_pdb(topology_path, force_overwrite=True)
-                    wrote_topology = True
-
                 if selected.unitcell_lengths is None:
                     writer.write(selected.xyz * 10.0)  # MDTraj stores xyz in nm; DCD writer expects Å.
                 else:
@@ -867,7 +968,7 @@ def write_diffusion_training_data(
                     f"wrote {source_frames}, expected {expected}."
                 )
 
-    if not wrote_topology:
+    if not total_frames:
         raise RuntimeError("No trajectory frames were available for diffusion output.")
     print(
         f"[OK] Saved diffusion training trajectory: {dcd_path} "
@@ -995,6 +1096,23 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         zmat_atom_order = resolve_zmat_atoms(top_for_sel, internal_cfg)
         print(f"[INFO] internal_zmat atoms (N={len(zmat_atom_order)}): {zmat_atom_order}")
 
+    # Check the diffusion export before the expensive featurization step.
+    diffusion_cfg = output_cfg.get("diffusion", {})
+    diffusion_enabled = bool(diffusion_cfg.get("enabled", True))
+    if diffusion_enabled:
+        check_diffusion_topology_path(
+            diffusion_cfg.get("topology", "diffusion_training.psf")
+        )
+        reference_topology_path = diffusion_cfg.get("reference_topology")
+        diffusion_atoms = select_diffusion_atoms(
+            top_for_sel,
+            diffusion_cfg.get("atomselect"),
+            quiet_md_load_topology(reference_topology_path)
+            if reference_topology_path
+            else None,
+        )
+        print(f"[INFO] diffusion export atoms: {len(diffusion_atoms)}")
+
 
     (
         X_all,
@@ -1120,15 +1238,14 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
         )
 
     # Aligned selected trajectory consumed directly by the diffusion trainer.
-    diffusion_cfg = output_cfg.get("diffusion", {})
     diffusion_dcd_path = None
     diffusion_topology_path = None
-    if bool(diffusion_cfg.get("enabled", True)):
+    if diffusion_enabled:
         diffusion_dcd_path = os.path.join(
             out, diffusion_cfg.get("trajectory", "diffusion_training.dcd")
         )
         diffusion_topology_path = os.path.join(
-            out, diffusion_cfg.get("topology", "diffusion_training.pdb")
+            out, diffusion_cfg.get("topology", "diffusion_training.psf")
         )
         write_diffusion_training_data(
             used_pairs=used_pairs,
@@ -1145,6 +1262,7 @@ def run_riteweight(cfg: Dict, check_mismatch: bool = False):
             dcd_path=diffusion_dcd_path,
             topology_path=diffusion_topology_path,
             chunk_size=int(diffusion_cfg.get("chunk_size", 1000)),
+            reference_topology_path=diffusion_cfg.get("reference_topology"),
         )
 
     # convergence

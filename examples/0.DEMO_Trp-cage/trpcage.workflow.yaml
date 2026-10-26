@@ -209,7 +209,7 @@ RiteWeight:
     diffusion:
       enabled: true
       trajectory: "diffusion_training.dcd"
-      topology: "diffusion_training.pdb"
+      topology: "diffusion_training.psf"
       atomselect: "all"
       alignment_atomselect: "protein and name CA"
       chunk_size: 1000

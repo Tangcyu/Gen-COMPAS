@@ -208,8 +208,9 @@ DEFAULT_CONFIG = {
             "diffusion": {
                 "enabled": True,
                 "trajectory": "diffusion_training.dcd",
-                "topology": "diffusion_training.pdb",
-                "atomselect": "protein and not element H",
+                "topology": "diffusion_training.psf",
+                "atomselect": None,
+                "reference_topology": None,
                 "alignment_atomselect": None,
                 "chunk_size": 1000,
             },
@@ -276,6 +277,17 @@ def normalize_config_aliases(config: Mapping[str, Any]) -> dict:
                     )
                 io_config.setdefault("topology", legacy)
     return normalized
+
+
+def check_diffusion_topology_path(path: Union[str, Path]) -> None:
+    """Require the RiteWeight diffusion topology to be written as a PSF."""
+    if Path(str(path)).suffix.lower() != ".psf":
+        raise ValueError(
+            "RiteWeight.outputs.diffusion.topology must end in .psf; got "
+            f"{str(path)!r}. PDB keeps only three residue-name characters and "
+            "drops bonds of residues such as CYSP, so the exported topology "
+            "would not match the diffusion model."
+        )
 
 
 def load_config(path: Union[str, Path]) -> dict:
@@ -476,6 +488,12 @@ def resolve_iteration_config(config: Mapping[str, Any], iteration: int) -> dict:
     riteweight["features"]["cache"]["path"] = str(
         paths["riteweight"] / "features_internal_zmat.npz"
     )
+    diffusion_output = riteweight["outputs"]["diffusion"]
+    if diffusion_output.get("enabled", True):
+        check_diffusion_topology_path(diffusion_output["topology"])
+    # The export trains the next iteration's warm-started model, so it must
+    # contain exactly the atoms of the model trained in this iteration.
+    diffusion_output["reference_topology"] = training["topology"]
 
     fel = resolved["FEL_estimate"]
     fel["input"] = str(paths["riteweight"] / riteweight["outputs"]["vcn"]["filename"])

@@ -80,7 +80,7 @@ Generative:
     alignment_atomselect: null
   data:
     dcd_path: ./output_riteweight/diffusion_training.dcd
-    topology_path: ./output_riteweight/diffusion_training.pdb
+    topology_path: ./output_riteweight/diffusion_training.psf
     alignment_atomselect: all
   diffusion:
     timesteps: 200
@@ -122,7 +122,7 @@ VCN:
   - ./output_riteweight/diffusion_training.dcd
   traj_fns:
   - ./output_riteweight/vcn_training.pt
-  topfile: ./output_riteweight/diffusion_training.pdb
+  topfile: ./output_riteweight/diffusion_training.psf
   atomindex: []
   atomselect: protein and name CA
   stride: 1
@@ -282,8 +282,9 @@ RiteWeight:
     diffusion:
       enabled: true
       trajectory: diffusion_training.dcd
-      topology: diffusion_training.pdb
-      atomselect: protein and not element H
+      topology: diffusion_training.psf
+      atomselect: null
+      reference_topology: null
       alignment_atomselect: null
       reference_path: null
       chunk_size: 1000

@@ -413,10 +413,12 @@ Compute statistical weights and aligned training artifacts using the
 <li><strong>features:</strong> Distance or internal-Z-matrix features, with optional caching.</li>
 <li><strong>riteweight:</strong> Cluster count, lag, iteration, convergence, and random-seed controls.</li>
 <li><strong>colvars:</strong> CV retention and optional periodic encodings.</li>
-<li><strong>outputs:</strong> Torch VCN table and selected DCD/PDB files for diffusion training.</li>
+<li><strong>outputs:</strong> Torch VCN table and selected DCD/PSF files for diffusion training.</li>
 </ul>
 
-<p>In a managed workflow, the diffusion export is aligned to the current model's inherited <code>canonical_reference.pdb</code>, rather than to the first frame of each newly collected dataset. One rigid transform is applied to the complete selected complex, preserving relative segment placement.</p>
+<p>The diffusion export must contain the same atoms as the diffusion model, including ligands and nonstandard residues such as lipidated cysteines. In a workflow, <code>RiteWeight.outputs.diffusion.reference_topology</code> is set to the iteration's diffusion training topology, which is <code>Workflow.initial_diffusion_data.topology_path</code> in iteration 0. With the default <code>atomselect: null</code>, its atoms are located in <code>RiteWeight.io.topology</code> by segment ID, residue number, and atom name, and the reference topology itself is written as <code>diffusion_training.psf</code>, so every iteration keeps the iteration-0 residue names and bonds required by the coordinate contract. An explicit <code>atomselect</code> must select exactly those atoms in the same order. The topology must be a PSF: PDB keeps only three residue-name characters, so a residue such as CYSP would reload as CYS without its lipid-tail bonds.</p>
+
+<p>In a managed workflow, the diffusion export is aligned to the current model's inherited <code>canonical_reference.pdb</code>, rather than to the first frame of each newly collected dataset. Only its coordinates are used; its atoms follow the model topology. One rigid transform is applied to the complete selected complex, preserving relative segment placement.</p>
 
 <p>RiteWeight records a numeric trajectory identifier and frame number in its VCN table. Lagged VCN samples are formed independently within each source trajectory, never across NAMD-job boundaries.</p>
 

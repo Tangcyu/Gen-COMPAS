@@ -8,8 +8,9 @@ vcn:
 diffusion:
   enabled: true
   trajectory: diffusion_training.dcd
-  topology: diffusion_training.pdb
-  atomselect: protein and not element H
+  topology: diffusion_training.psf
+  atomselect: null
+  reference_topology: null
   alignment_atomselect: null
   reference_path: null
   chunk_size: 1000
